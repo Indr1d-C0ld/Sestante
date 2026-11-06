@@ -1,0 +1,51 @@
+[Unit]
+Description=Sestante, spedizioni in prima persona dentro riprese satellitari
+Documentation=https://github.com/Indr1d-C0ld/sestante
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sestante
+Group=sestante
+WorkingDirectory=/opt/sestante
+
+# Tutti i dati vivono qui: cache, indagini, scarichi, cestino.
+StateDirectory=sestante
+Environment=SESTANTE_DATA=/var/lib/sestante
+Environment=PORT=4173
+Environment=NODE_ENV=production
+
+# Le chiavi facoltative. Senza questo file la piattaforma parte lo stesso, con le sole fonti libere.
+EnvironmentFile=-/etc/sestante/sestante.env
+
+ExecStart=/usr/local/bin/node server/index.ts
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+
+# Il processo non ha bisogno di privilegi: scrive solo nella sua cartella di stato e parla in rete.
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+SystemCallArchitectures=native
+UMask=0027
+# MemoryDenyWriteExecute resta spento di proposito: il JIT di Node e WebAssembly ne hanno bisogno.
+
+[Install]
+WantedBy=multi-user.target
