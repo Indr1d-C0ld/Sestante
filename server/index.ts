@@ -5,7 +5,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { extname, join, normalize, resolve } from "node:path";
 import { cancelJob, countTiles, getTile, listJobs, startJob, type JobRequest } from "./jobs.ts";
 import { fetchBundle } from "./osm.ts";
-import { allSources, customSources, DATA, resolveSource, ROOT, saveCustomSources, UA, waybackReleases, type TileSource } from "./sources.ts";
+import { allSources, customSources, customSourcesProblem, DATA, resolveSource, ROOT, saveCustomSources, UA, waybackReleases, type TileSource } from "./sources.ts";
 import { copernicusDem, deepLayers, fires, gibsTile, isKnownImage, nasaCatalog, ndviSeries, openWeather, owmTile, placeArticles, placePhotos, PRODUCTS, proxiedImage, sentinelImage, sentinelScenes, sentinelSpectrum, servicesStatus } from "./earth.ts";
 import { forgetGedi, gediStatus, nasademGrid, startGedi } from "./nasa.ts";
 import { scrub } from "./secrets.ts";
@@ -227,7 +227,11 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
     return true;
   }
   if (path === "/api/sources" && req.method === "GET") return json(res, 200, allSources()), true;
+  if (path === "/api/sources/problem") return json(res, 200, { problem: customSourcesProblem() }), true;
   if (path === "/api/sources" && req.method === "POST") {
+    // Saving now would replace a file that may hold good sources behind one typo.
+    const problem = customSourcesProblem();
+    if (problem) return json(res, 409, { error: problem }), true;
     const input = JSON.parse((await body(req)).toString()) as Partial<TileSource>;
     const template = String(input.template ?? "");
     if (!/^https?:\/\//.test(template) || !/\{(x|y|z|quad)\}/.test(template)) return json(res, 400, { error: "Il modello deve essere un URL con {x} {y} {z} oppure {quad}." }), true;

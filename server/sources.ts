@@ -84,14 +84,35 @@ const BUILT_IN: TileSource[] = [
 
 const CUSTOM_FILE = join(DATA, "sources.json");
 
-export function customSources(): TileSource[] {
-  if (!existsSync(CUSTOM_FILE)) return [];
-  try {
-    return JSON.parse(readFileSync(CUSTOM_FILE, "utf8")) as TileSource[];
-  } catch {
-    return [];
-  }
+/** The file can be edited by hand, so it is checked: a typo must not pass for "no sources". */
+export function parseCustomSources(text: string): TileSource[] {
+  const list = JSON.parse(text) as unknown;
+  if (!Array.isArray(list)) throw new Error("deve contenere un elenco di fonti");
+  list.forEach((row: Partial<TileSource> | null, i) => {
+    if (typeof row?.id !== "string" || typeof row.template !== "string") throw new Error(`alla fonte ${i + 1} manca id o template`);
+  });
+  return list as TileSource[];
 }
+
+let lastProblem: string | null = null;
+
+function readCustomSources(): { list: TileSource[]; problem: string | null } {
+  let out: { list: TileSource[]; problem: string | null } = { list: [], problem: null };
+  if (existsSync(CUSTOM_FILE)) {
+    try {
+      out.list = parseCustomSources(readFileSync(CUSTOM_FILE, "utf8"));
+    } catch (error) {
+      out = { list: [], problem: `${CUSTOM_FILE} non è valido: ${(error as Error).message}. Le fonti personali sono sospese finché non lo correggi.` };
+    }
+  }
+  // Read for every tile: once in the log is enough.
+  if (out.problem && out.problem !== lastProblem) console.error(out.problem);
+  lastProblem = out.problem;
+  return out;
+}
+
+export const customSources = () => readCustomSources().list;
+export const customSourcesProblem = () => readCustomSources().problem;
 
 export function saveCustomSources(list: TileSource[]) {
   mkdirSync(DATA, { recursive: true });

@@ -42,6 +42,7 @@ export function Atlas({ onOpen, onResume, initial }: Props) {
   const [frame, setFrame] = useState({ left: 0, top: 0, width: 0, height: 0, fills: false });
   const [tab, setTab] = useState<"luogo" | "archivio" | "manuale" | "scarichi">(new URLSearchParams(location.search).has("archivio") ? "archivio" : "luogo");
   const [sources, setSources] = useState<TileSourceInfo[]>([]);
+  const [sourcesProblem, setSourcesProblem] = useState<string | null>(null);
   const [viewSource, setViewSource] = useState("esri");
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<GeocodeHit[]>([]);
@@ -59,6 +60,11 @@ export function Atlas({ onOpen, onResume, initial }: Props) {
   const zoom = bestZoom(bbox, 6144, 19);
   const mpp = metersPerPixel(lat, zoom);
   const tooBig = size.width > 6000 || size.height > 6000;
+
+  const loadSources = () => {
+    api.sources().then(setSources).catch(() => undefined);
+    api.sourcesProblem().then((row) => setSourcesProblem(row.problem)).catch(() => undefined);
+  };
 
   const syncFrame = () => {
     const map = mapRef.current;
@@ -99,9 +105,12 @@ export function Atlas({ onOpen, onResume, initial }: Props) {
     const onDoubleClick = (e: MouseEvent) => map.getCanvasContainer().dispatchEvent(new MouseEvent("dblclick", e));
     sel.addEventListener("wheel", onWheel, { passive: false });
     sel.addEventListener("dblclick", onDoubleClick);
-    api.sources().then(setSources).catch(() => undefined);
+    loadSources();
+    // The list of sources can be edited by hand, in another window.
+    window.addEventListener("focus", loadSources);
     api.expeditions().then(setTrips).catch(() => undefined);
     return () => {
+      window.removeEventListener("focus", loadSources);
       sel.removeEventListener("wheel", onWheel);
       sel.removeEventListener("dblclick", onDoubleClick);
       map.remove();
@@ -269,6 +278,7 @@ export function Atlas({ onOpen, onResume, initial }: Props) {
           ))}
         </div>
         <div className="atlas-body">
+          {sourcesProblem && <p className="hint" style={{ color: "var(--danger)" }}>{sourcesProblem}</p>}
           {tab === "luogo" && (
             <>
               <div>
@@ -399,7 +409,7 @@ export function Atlas({ onOpen, onResume, initial }: Props) {
               onOpen={(spec, canvas) => onOpen({ ...spec, id: newId() }, canvas)}
             />
           )}
-          {tab === "scarichi" && <Downloads bbox={bbox} name={name} sources={sources} reload={() => api.sources().then(setSources)} />}
+          {tab === "scarichi" && <Downloads bbox={bbox} name={name} sources={sources} reload={loadSources} />}
         </div>
       </aside>
       <main className="atlas-map">

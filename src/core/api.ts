@@ -80,6 +80,7 @@ export const api = {
   startGedi: (b: Bbox) => post<GediStatus>(`/api/earth/gedi?${boxQuery(b)}`, {}),
 
   sources: () => getJson<TileSourceInfo[]>("/api/sources"),
+  sourcesProblem: () => getJson<{ problem: string | null }>("/api/sources/problem"),
   addSource: (value: Partial<TileSourceInfo>) => post<TileSourceInfo>("/api/sources", value),
   versions: (lat: number, lon: number, z = 17) => getJson<PlateVersion[]>(`/api/wayback/versions?lat=${lat}&lon=${lon}&z=${z}`),
   newestRelease: () => getJson<{ release: number; date: string }>("/api/wayback/newest"),

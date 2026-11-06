@@ -4,6 +4,7 @@ import { solveShotInstant, sunPosition, sunEvents } from "../src/core/solar.ts";
 import { parseCoordinates as parseLocation } from "../src/core/coords.ts";
 import { Projection, frameFillsView, parseKmlBbox, toUtm } from "../src/core/geo.ts";
 import { analyzePlate, type Footprint } from "../src/vision/analyze.ts";
+import { parseCustomSources } from "../server/sources.ts";
 
 const SIZE = 800;
 const MPP = 0.5;
@@ -188,4 +189,14 @@ test("il riquadro lascia la vista alla mappa quando non resta mappa da afferrare
   // Enormous, but zoomed in somewhere else: the map is still all there.
   assert.equal(frameFillsView({ left: 900, top: -5000, width: 50000, height: 40000 }, ...view), false);
   assert.equal(frameFillsView({ left: 5000, top: 5000, width: 700, height: 500 }, ...view), false);
+});
+
+test("un errore nel file delle fonti personali non passa per un elenco vuoto", () => {
+  const good = { id: "tuo-1", template: "https://example.org/{z}/{x}/{y}.png", bulkLimit: 2000 };
+  assert.deepEqual(parseCustomSources(JSON.stringify([good])), [good]);
+  assert.deepEqual(parseCustomSources("[]"), []);
+  assert.throws(() => parseCustomSources('[{"id": "tuo-1", "template": "x" "bulkLimit": 2000}]'));
+  assert.throws(() => parseCustomSources('{"id": "tuo-1"}'), /elenco/);
+  assert.throws(() => parseCustomSources('[{"id": "tuo-1"}]'), /fonte 1/);
+  assert.throws(() => parseCustomSources("[null]"), /fonte 1/);
 });

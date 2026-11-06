@@ -416,7 +416,7 @@ Le altre chiavi di lettura sono nel codice: `tests/` contiene le scene sintetich
 
 La scheda **Scarichi** dell'Atlante riprende le funzioni di [MapTilesDownloader](https://github.com/AliFlux/MapTilesDownloader) (MIT), riscritte in Node: riquadro, fonte, zoom, MBTiles, cartella `z/x/y`, mosaico PNG con world file e fonti personali con `{x} {y} {z} {quad}`. Gli output finiscono in `data/downloads`, ognuno con un `provenienza.json`.
 
-La vecchia fonte Carto ora richiede una chiave: è stata sostituita con Esri grigio chiaro. Non sono preimpostati Google e Bing: i loro termini vietano lo scarico fuori dalle API ufficiali. Il campo per le fonti personali accetta qualunque modello; la responsabilità di rispettarne i termini è di chi lo aggiunge. OpenStreetMap è limitato a 250 tessere per lavoro come chiede la sua policy.
+La vecchia fonte Carto ora richiede una chiave: è stata sostituita con Esri grigio chiaro. Non sono preimpostati Google e Bing: i loro termini vietano lo scarico fuori dalle API ufficiali. Il campo per le fonti personali accetta qualunque modello; la responsabilità di rispettarne i termini è di chi lo aggiunge. OpenStreetMap è limitato a 250 tessere per lavoro come chiede la sua policy. Le fonti personali stanno in `data/sources.json`: se lo modifichi a mano e diventa non valido, l'Atlante lo segnala, le fonti preimpostate restano disponibili e il file non viene sovrascritto finché non lo correggi.
 
 ## Fonti e licenze
 
