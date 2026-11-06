@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { solveShotInstant, sunPosition, sunEvents } from "../src/core/solar.ts";
 import { parseCoordinates as parseLocation } from "../src/core/coords.ts";
-import { Projection, parseKmlBbox, toUtm } from "../src/core/geo.ts";
+import { Projection, frameFillsView, parseKmlBbox, toUtm } from "../src/core/geo.ts";
 import { analyzePlate, type Footprint } from "../src/vision/analyze.ts";
 
 const SIZE = 800;
@@ -178,4 +178,14 @@ test("projection round-trips and UTM is right", () => {
   const utm = toUtm(41.8902, 12.4922);
   assert.equal(utm.zone, 33);
   assert.ok(Math.abs(utm.east - 291_000) < 1500 && Math.abs(utm.north - 4_640_500) < 1500, utm.text);
+});
+
+test("il riquadro lascia la vista alla mappa quando non resta mappa da afferrare", () => {
+  const view = [1000, 800] as const;
+  assert.equal(frameFillsView({ left: 140, top: 140, width: 720, height: 520 }, ...view), false);
+  assert.equal(frameFillsView({ left: -300, top: -300, width: 1600, height: 1400 }, ...view), true);
+  assert.equal(frameFillsView({ left: 20, top: 20, width: 960, height: 760 }, ...view), true);
+  // Enormous, but zoomed in somewhere else: the map is still all there.
+  assert.equal(frameFillsView({ left: 900, top: -5000, width: 50000, height: 40000 }, ...view), false);
+  assert.equal(frameFillsView({ left: 5000, top: 5000, width: 700, height: 500 }, ...view), false);
 });

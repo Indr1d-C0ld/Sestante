@@ -72,6 +72,13 @@ export function tileXY(lat: number, lon: number, z: number) {
 /** Ground metres per pixel of a 256 px tile at this latitude and zoom. */
 export const metersPerPixel = (lat: number, z: number) => (156543.03392 * Math.cos(lat * RAD)) / 2 ** z;
 
+/** Whether a frame on screen leaves too little map around it to grab: then the view has to belong to the map, not to the frame. */
+export function frameFillsView(frame: { left: number; top: number; width: number; height: number }, viewWidth: number, viewHeight: number, share = 0.8) {
+  const width = Math.min(frame.left + frame.width, viewWidth) - Math.max(frame.left, 0);
+  const height = Math.min(frame.top + frame.height, viewHeight) - Math.max(frame.top, 0);
+  return width > 0 && height > 0 && width * height >= share * viewWidth * viewHeight;
+}
+
 export function bestZoom(bbox: Bbox, maxSide: number, maxZoom: number) {
   for (let z = maxZoom; z > 1; z--) {
     const a = tileXY(bbox.n, bbox.w, z);

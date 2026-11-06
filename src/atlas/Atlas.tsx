@@ -4,7 +4,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type GeocodeHit } from "../core/api.ts";
 import { parseCoordinates, precisionWords, type ParsedPoint } from "../core/coords.ts";
-import { bboxSizeMeters, bestZoom, boxAround, formatLatLon, latToMy, lonToMx, metersPerPixel, parseKmlBbox, Projection, type Bbox } from "../core/geo.ts";
+import { bboxSizeMeters, bestZoom, boxAround, formatLatLon, frameFillsView, latToMy, lonToMx, metersPerPixel, parseKmlBbox, Projection, type Bbox } from "../core/geo.ts";
 import type { DownloadJob, FieldSpec, FocusPoint, TileSourceInfo } from "../core/types.ts";
 import { Archive } from "./Archive.tsx";
 import { readManualPlate } from "./manual.ts";
@@ -35,10 +35,11 @@ function rasterStyle(source: string, maxzoom: number): maplibregl.StyleSpecifica
 export function Atlas({ onOpen, onResume, initial }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const selRef = useRef<HTMLDivElement>(null);
   const [bbox, setBbox] = useState<Bbox>(initial ?? START);
   const bboxRef = useRef(bbox);
   bboxRef.current = bbox;
-  const [frame, setFrame] = useState({ left: 0, top: 0, width: 0, height: 0 });
+  const [frame, setFrame] = useState({ left: 0, top: 0, width: 0, height: 0, fills: false });
   const [tab, setTab] = useState<"luogo" | "archivio" | "manuale" | "scarichi">(new URLSearchParams(location.search).has("archivio") ? "archivio" : "luogo");
   const [sources, setSources] = useState<TileSourceInfo[]>([]);
   const [viewSource, setViewSource] = useState("esri");
@@ -64,7 +65,9 @@ export function Atlas({ onOpen, onResume, initial }: Props) {
     if (!map) return;
     const a = map.project([bboxRef.current.w, bboxRef.current.n]);
     const b = map.project([bboxRef.current.e, bboxRef.current.s]);
-    setFrame({ left: a.x, top: a.y, width: b.x - a.x, height: b.y - a.y });
+    const box = { left: a.x, top: a.y, width: b.x - a.x, height: b.y - a.y };
+    const view = map.getContainer();
+    setFrame({ ...box, fills: frameFillsView(box, view.clientWidth, view.clientHeight) });
   };
 
   useEffect(() => {
@@ -87,9 +90,22 @@ export function Atlas({ onOpen, onResume, initial }: Props) {
     map.on("resize", syncFrame);
     map.on("load", syncFrame);
     mapRef.current = map;
+    // The frame lies above the map: zooming over it must still reach the map, or a zoomed-in view has no way back.
+    const sel = selRef.current!;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      map.getCanvasContainer().dispatchEvent(new WheelEvent("wheel", e));
+    };
+    const onDoubleClick = (e: MouseEvent) => map.getCanvasContainer().dispatchEvent(new MouseEvent("dblclick", e));
+    sel.addEventListener("wheel", onWheel, { passive: false });
+    sel.addEventListener("dblclick", onDoubleClick);
     api.sources().then(setSources).catch(() => undefined);
     api.expeditions().then(setTrips).catch(() => undefined);
-    return () => map.remove();
+    return () => {
+      sel.removeEventListener("wheel", onWheel);
+      sel.removeEventListener("dblclick", onDoubleClick);
+      map.remove();
+    };
   }, []);
 
   useEffect(syncFrame, [bbox]);
@@ -154,8 +170,8 @@ export function Atlas({ onOpen, onResume, initial }: Props) {
     const rect = map.getContainer().getBoundingClientRect();
     const start = map.unproject([event.clientX - rect.left, event.clientY - rect.top]);
     const origin = { ...bboxRef.current };
-    if (mode === "move" && focusRef.current) setFocus(null);
     const move = (e: PointerEvent) => {
+      if (mode === "move" && focusRef.current) setFocus(null);
       const at = map.unproject([e.clientX - rect.left, e.clientY - rect.top]);
       // With a chosen point the corners grow the box around it, so it stays the exact centre.
       const pinned = focusRef.current;
@@ -388,7 +404,7 @@ export function Atlas({ onOpen, onResume, initial }: Props) {
       </aside>
       <main className="atlas-map">
         <div ref={host} className="map" />
-        <div className="sel" style={{ left: frame.left, top: frame.top, width: frame.width, height: frame.height }} onPointerDown={(e) => beginDrag("move", e)}>
+        <div ref={selRef} className={`sel ${frame.fills ? "fills" : ""}`} style={{ left: frame.left, top: frame.top, width: frame.width, height: frame.height }} onPointerDown={(e) => beginDrag("move", e)}>
           <span className="tag">
             {(size.width / 1000).toFixed(2)} × {(size.height / 1000).toFixed(2)} km
           </span>

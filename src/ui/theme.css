@@ -68,6 +68,9 @@ label.field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; 
 .atlas-map { position: relative; min-width: 0; overflow: hidden; }
 .atlas-map .map { position: absolute; inset: 0; }
 .sel { position: absolute; border: 2px solid var(--rust); box-shadow: 0 0 0 9999px rgba(10, 14, 10, 0.42); cursor: move; z-index: 5; }
+.sel.fills { pointer-events: none; }
+.sel.fills .h { pointer-events: auto; }
+.atlas-map .maplibregl-ctrl-top-right, .atlas-map .maplibregl-ctrl-bottom-right { z-index: 6; }
 .sel .h { position: absolute; width: 14px; height: 14px; background: var(--paper); border: 2px solid var(--rust); }
 .sel .h.nw { left: -8px; top: -8px; cursor: nwse-resize; }
 .sel .h.ne { right: -8px; top: -8px; cursor: nesw-resize; }
