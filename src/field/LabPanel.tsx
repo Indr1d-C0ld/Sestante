@@ -4,7 +4,7 @@ import { alignments, astroEvents, horizonAltitude, planAxis } from "../core/arch
 import { formatLatLon, type Projection } from "../core/geo.ts";
 import { floodStats, sectionAlong, viewshed, type Section } from "../core/fieldwork.ts";
 import { sunEvents } from "../core/solar.ts";
-import type { Expedition, Hypothesis, Note, NoteKind, PlateVersion, StrataSummary, Investigation, LidarReport, PhotoFindRow, PhotoPlacement as PlacedPhoto, SavedRoute, SavedStudy } from "../core/types.ts";
+import type { Expedition, Hypothesis, Note, NoteKind, PlateVersion, StrataSummary, Investigation, BenchReport, LidarReport, PhotoFindRow, PhotoPlacement as PlacedPhoto, SavedRoute, SavedStudy } from "../core/types.ts";
 import type { ShadowPlate } from "../vision/shadowTest.ts";
 import type { Engine } from "../world/engine.ts";
 import { PROVENANCE_LEGEND } from "../world/shading.ts";
@@ -78,6 +78,7 @@ export type LabProps = {
   onRoutes: (list: SavedRoute[]) => void;
   onSights: (list: { a: { x: number; z: number }; b: { x: number; z: number }; visible: boolean }[]) => void;
   onLidarReport: (row: LidarReport) => void;
+  onBenchReport: (row: BenchReport) => void;
   onUseLidarTerrain: () => void;
   onPlacement: (row: PlacedPhoto) => Promise<unknown> | void;
   onPhotoFinds: (list: PhotoFindRow[]) => void;

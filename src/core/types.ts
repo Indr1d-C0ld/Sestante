@@ -151,6 +151,23 @@ export type LidarReport = {
   tallest: { name: string; measured: number; mapped: number; source: string }[];
 };
 
+type MaskScoreRow = { cells: number; found: number; expected: number; precision: number; recall: number; iou: number };
+
+/** The reconstruction of one box scored against an airborne laser survey. */
+export type BenchReport = {
+  provider: string;
+  name: string;
+  at: string;
+  cell: number;
+  plateDate: string | null;
+  heights: { label: string; n: number; bias: number; typical: number; within3: number }[];
+  /** Heights read from shadows alone, whatever source the building ended up with. */
+  shadowHeights: { label: string; n: number; bias: number; typical: number; within3: number } | null;
+  shadow: MaskScoreRow;
+  canopy: MaskScoreRow;
+  sun: { used: number; method: string; best: number; iouUsed: number; iouBest: number };
+};
+
 /** A copy of the explorer left standing somewhere, as a scale bar in the world. */
 export type PosedFigure = { id: string; x: number; z: number; yaw: number };
 
@@ -181,6 +198,7 @@ export type Expedition = {
   photoFinds?: PhotoFindRow[];
   videos?: SavedVideo[];
   lidarReport?: LidarReport | null;
+  benchReport?: BenchReport | null;
   thumb?: string;
   status?: "aperta" | "conclusa";
   /** Observations made in the Studio before anyone went down to the field. */

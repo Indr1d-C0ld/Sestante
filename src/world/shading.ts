@@ -13,6 +13,7 @@ export const U = {
   uWindAmp: { value: 0.1 },
   uNight: { value: 0 },
   uNoise: { value: null as THREE.Texture | null },
+  uMat: { value: null as THREE.Texture | null },
   uHalf: { value: new THREE.Vector2(500, 500) },
   uPlate: { value: null as THREE.Texture | null },
   uPlateB: { value: null as THREE.Texture | null },
@@ -126,6 +127,8 @@ uniform vec2 uHalf;
 uniform sampler2D uPlate, uPlateB, uGain, uClass, uFarPlate, uDrape;
 uniform float uPlateMix, uDeshadow, uDetail, uGrid, uFarHalf, uDrapeMix;
 uniform vec3 uCam;
+// Raised near the eye by the ground: a pixel a third of a metre wide is a blot at arm's length, not a detail.
+float plateBlur = 0.;
 vec3 plateAlbedo(vec2 p, out vec4 cls) {
   vec2 uv = vec2(p.x / uHalf.x, -p.y / uHalf.y) * .5 + .5;
   if (uv.x < 0. || uv.y < 0. || uv.x > 1. || uv.y > 1.) {
@@ -133,8 +136,8 @@ vec3 plateAlbedo(vec2 p, out vec4 cls) {
     cls = vec4(0.);
     return texture2D(uFarPlate, vec2(p.x, -p.y) / uFarHalf * .5 + .5).rgb;
   }
-  vec3 c = texture2D(uPlate, uv).rgb;
-  if (uPlateMix > .001) c = mix(c, texture2D(uPlateB, uv).rgb, uPlateMix);
+  vec3 c = texture2D(uPlate, uv, plateBlur).rgb;
+  if (uPlateMix > .001) c = mix(c, texture2D(uPlateB, uv, plateBlur).rgb, uPlateMix);
   cls = texture2D(uClass, uv);
   if (uDeshadow > .5) {
     vec4 fill = texture2D(uGain, uv);
@@ -195,7 +198,7 @@ export const PROVENANCE_LEGEND = [
   { id: "presunta", label: "Presunta", note: "mediana del quartiere o tipo edilizio, tratteggiata", color: "#199e70", sources: ["quartiere", "tipo edilizio"] },
 ];
 
-function valueNoise(size: number, seed: number) {
+export function valueNoise(size: number, seed: number) {
   const lattice = new Float32Array(size * size);
   let s = seed;
   for (let i = 0; i < lattice.length; i++) {

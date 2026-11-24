@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, canvasBlob, imageCanvas, type PlacePhoto } from "../core/api.ts";
+import { api, canvasBlob, imageCanvas, type LidarOffer, type PlacePhoto } from "../core/api.ts";
 import { measureLeg, SURVEY_CLASSES } from "../core/fieldwork.ts";
 import { compassName, formatLatLon } from "../core/geo.ts";
 import { sunPosition } from "../core/solar.ts";
@@ -13,7 +13,7 @@ import { CompassDial, CompassTape, GaugeDial, Reticle, WatchDial } from "./Dials
 import { finishTraverse, HOTBAR, localPressure, magneticInfo, swElapsed, surveyStats, TOOLS, toolById, type Ctx, type InstrumentState, type ToolId } from "./instruments.ts";
 import { LabPanel, type LabTab } from "./LabPanel.tsx";
 import { LayersPanel, type Drape } from "./LayersPanel.tsx";
-import { applyLidar } from "./lidarTools.ts";
+import { applyLidar, benchmark } from "./lidarTools.ts";
 import { TimeTravel } from "./TimeTravel.tsx";
 import { absentIds, applyLaser, applyStrata, assessWorld, correctTrees, heightErrorsFrom, loadSpectrum, measureMass, plateDate, volumeOfBuilding } from "./research.ts";
 import { crownVolume, formatRange, formatVolume } from "../vision/volume.ts";
@@ -180,7 +180,7 @@ export function FieldScreen({ expedition: initial, canvas, findings, study, onEx
       engine = new Engine(glRef.current!, data, loadSettings());
       engineRef.current = engine;
       stateRef.current.qnhRef = engine.weather.now.pressureMsl;
-      (window as unknown as { sestante: unknown }).sestante = { engine, addNote };
+      (window as unknown as { sestante: unknown }).sestante = { engine, addNote, benchmark: (offer: LidarOffer) => benchmark(engine!, offer) };
       engine.setPins(initial.pins);
       engine.setFigures(initial.figures ?? []);
       // The chosen point becomes a stake in the world, and the first thing you face when it is not under your feet.
@@ -236,7 +236,7 @@ export function FieldScreen({ expedition: initial, canvas, findings, study, onEx
         addNote(
           "sistema",
           "Lettura della lastra",
-          `${sunLine}${cross}\n${data.log.join(" ")}`,
+          `${sunLine}${cross}${r.sun.dateAltitude != null ? ` La data dichiarata darebbe ${deg(r.sun.dateAltitude)}°: gli edifici di altezza nota la smentiscono, quindi la data dello scatto è dubbia.` : ""}\n${data.log.join(" ")}`,
           {
             values: {
               edifici: String(data.buildings.filter((b) => !b.hidden).length),
@@ -1743,6 +1743,7 @@ export function FieldScreen({ expedition: initial, canvas, findings, study, onEx
                   }
                   onSights={(rows) => engine.setSights(rows)}
                   onLidarReport={(lidarReport) => updateExpedition((e) => ({ ...e, lidarReport }), true)}
+                  onBenchReport={(benchReport) => updateExpedition((e) => ({ ...e, benchReport }), true)}
                   onUseLidarTerrain={() => {
                     applySettings({ ...settings, demSource: "lidar" });
                     location.href = `${location.pathname}?spedizione=${engine.data.spec.id}`;

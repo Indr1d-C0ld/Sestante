@@ -1,0 +1,89 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { castShadows, fitSunAltitude, maskScore, resampleMask, type SurfaceGrid } from "../src/vision/bench.ts";
+import { analyzePlate } from "../src/vision/analyze.ts";
+
+/** Flat ground with one block: 10 m tall, 10 cells wide, on a 1 m grid. */
+function block(size = 80, tall = 10): SurfaceGrid {
+  const surface = new Float32Array(size * size);
+  for (let j = 30; j < 40; j++) for (let i = 30; i < 40; i++) surface[j * size + i] = tall;
+  return { surface, ground: new Float32Array(size * size), cols: size, rows: size, cellX: 1, cellZ: 1 };
+}
+
+test("un blocco getta l'ombra dalla parte opposta al sole, lunga quanto vuole la geometria", () => {
+  const grid = block();
+  // Sun in the south at 45°: the shadow runs north for about the block's height.
+  const south = castShadows(grid, Math.PI, Math.PI / 4);
+  const at = (i: number, j: number) => south[j * grid.cols + i];
+  assert.equal(at(35, 25), 1, "5 m a nord");
+  assert.equal(at(35, 17), 0, "13 m a nord");
+  assert.equal(at(35, 45), 0, "a sud, verso il sole");
+  assert.equal(at(20, 25), 0, "di fianco");
+  // A lower sun in the west throws it east, and further.
+  const west = castShadows(grid, (3 * Math.PI) / 2, Math.atan(0.5));
+  assert.equal(west[35 * grid.cols + 55], 1, "15 m a est");
+  assert.equal(west[35 * grid.cols + 62], 0, "22 m a est");
+  assert.equal(west[35 * grid.cols + 25], 0, "a ovest");
+});
+
+test("il punteggio di una maschera conta solo le celle valide", () => {
+  const found = [1, 1, 0, 0, 1, 1];
+  const expected = [1, 0, 1, 0, 1, 0];
+  const score = maskScore(found, expected, [1, 1, 1, 1, 0, 0]);
+  assert.equal(score.cells, 4);
+  assert.equal(score.precision, 0.5);
+  assert.equal(score.recall, 0.5);
+  assert.ok(Math.abs(score.iou - 1 / 3) < 1e-9);
+  assert.equal(maskScore([0, 0], [0, 0], [1, 1]).iou, 0);
+});
+
+test("una maschera si rilegge su una griglia più rada", () => {
+  const rgba = new Uint8Array(4 * 4 * 4);
+  for (let y = 0; y < 2; y++) for (let x = 2; x < 4; x++) rgba[(y * 4 + x) * 4 + 3] = 255;
+  assert.deepEqual([...resampleMask(rgba, 4, 4, 2, 2, 3, 4, 127)], [0, 1, 0, 0]);
+});
+
+test("l'altezza del sole si ritrova dalle ombre di forme note", () => {
+  const grid = block(120, 14);
+  const truth = 0.62;
+  const found = castShadows(grid, 2.6, truth);
+  const open = Uint8Array.from(grid.surface, (v) => (v > 0 ? 0 : 1));
+  const fit = fitSunAltitude(grid, 2.6, found, open);
+  assert.ok(Math.abs(fit.altitude - truth) < 0.04, `trovata ${fit.altitude}`);
+  assert.ok(fit.iou > 0.9);
+});
+
+test("un'ombra più larga dei suoi dintorni viene riconosciuta sotto un edificio noto", () => {
+  // A 60 m tall slab throws a shadow far wider than the 28 m neighbourhood the first mask compares against.
+  const size = 400;
+  const mpp = 0.5;
+  const rgba = new Uint8ClampedArray(size * size * 4);
+  const sunAz = Math.PI;
+  const alt = Math.atan(60 / 70);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const k = (y * size + x) * 4;
+      const roof = x >= 60 && x < 340 && y >= 300 && y < 340;
+      const shaded = x >= 60 && x < 340 && y >= 160 && y < 300;
+      const tone = roof ? 200 : shaded ? 42 : 150 + ((x * 7 + y * 13) % 9);
+      rgba[k] = tone;
+      rgba[k + 1] = tone;
+      rgba[k + 2] = shaded ? tone + 10 : tone;
+      rgba[k + 3] = 255;
+    }
+  }
+  const result = analyzePlate({
+    rgba, width: size, height: size, mpp, lat: 45, lon: 9, captureDate: null, manualSun: { azimuth: sunAz, altitude: alt },
+    footprints: [{ id: "a", rings: [[60, 300, 340, 300, 340, 340, 60, 340]], tagHeight: 60 }],
+    roads: [], water: [], osmTrees: [], register: false,
+  });
+  let inside = 0;
+  let total = 0;
+  for (let y = 175; y < 285; y += 3) for (let x = 80; x < 320; x += 3) {
+    total++;
+    if (result.gainMap[(y * size + x) * 4 + 3]! > 200) inside++;
+  }
+  assert.ok(inside / total > 0.95, `riconosciuto ${(inside / total * 100).toFixed(0)}%`);
+  // Sunlit ground far from the shadow stays untouched.
+  assert.equal(result.gainMap[(60 * size + 200) * 4 + 3], 0);
+});

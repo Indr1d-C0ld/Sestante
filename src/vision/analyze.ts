@@ -1,4 +1,5 @@
 import { solveShotInstant, sunPosition } from "../core/solar.ts";
+import { castShadows } from "./bench.ts";
 
 /**
  * Reads the plate as a photo-interpreter would: shadows → sun → heights.
@@ -33,6 +34,8 @@ export type SunReading = {
   instant: string | null;
   crossCheckAltitude: number | null;
   crossCheckSamples: number;
+  /** The sun height the stated date gives, when mapped heights and their shadows contradict it: the date is then in doubt. */
+  dateAltitude?: number;
 };
 
 export type HeightReading = { h: number | null; confidence: number; rays: number };
@@ -548,6 +551,15 @@ export function analyzePlate(input: AnalysisInput): AnalysisResult {
     sun.crossCheckAltitude = Math.atan(tan);
     sun.crossCheckSamples = tanSamples.length;
     if (!input.captureDate && !input.manualSun) sun.altitude = sun.crossCheckAltitude;
+    // A mosaic's stated date is sometimes another strip's. Many mapped heights agreeing on a very different sun outweigh it.
+    // The check itself reads some ten degrees high, because the shadow mask stops short of the penumbra: only a wide gap counts.
+    else if (!input.manualSun && tanSamples.length >= 10 && Math.abs(sun.crossCheckAltitude - sun.altitude) > 0.42) {
+      sun.dateAltitude = sun.altitude;
+      sun.altitude = sun.crossCheckAltitude;
+      sun.method = "ombre";
+      sun.instant = null;
+      sun.confidence *= 0.6;
+    }
   }
 
   // With enough ground truth, its median ratio replaces pure geometry: it also absorbs satellite lean and mask bias.
@@ -597,6 +609,8 @@ export function analyzePlate(input: AnalysisInput): AnalysisResult {
     roofTones[fp.id] = toneAt(cx / count, cy / count);
   }
 
+  const shadowWide = extendShadows(shadow, lum, exg, built, water, grid, footprints, heights, sun.sunAzimuth, Math.atan(tan), mpp);
+
   // Lawn or canopy: canopy is rough, dark or next to its own shadow.
   const canopyMask = new Uint8Array(n);
   const lawnMask = new Uint8Array(n);
@@ -632,7 +646,7 @@ export function analyzePlate(input: AnalysisInput): AnalysisResult {
   let shadeN = 0;
   for (let i = 0; i < n; i += 3) {
     if (built[i] || veg[i] || water[i]) continue;
-    if (shadow[i]) {
+    if (shadowWide[i]) {
       for (let c = 0; c < 3; c++) shade[c]! += rgba[i * 4 + c]!;
       shadeN++;
     } else if (lum[i]! < 0.7) {
@@ -646,9 +660,11 @@ export function analyzePlate(input: AnalysisInput): AnalysisResult {
 
   // Shadows are filled from their sunlit surroundings: below the noise floor a dark pixel holds no colour worth amplifying.
   const soft = new Float32Array(n);
-  for (let i = 0; i < n; i++) soft[i] = shadow[i]! && !water[i] ? 1 : 0;
+  for (let i = 0; i < n; i++) soft[i] = shadowWide[i]! && !water[i] ? 1 : 0;
   const softT = integral(soft, grid);
-  const fill = pushPull(rgba, shadow, grid);
+  const fill = pushPull(rgba, shadowWide, grid);
+  // A penumbra is about a metre wide: a hard mask edge would leave a dark rim on one side and a bright one on the other.
+  const feather = Math.max(1, Math.round(0.7 / mpp));
   const classMap = new Uint8Array(n * 4);
   const gainMap = new Uint8Array(n * 4);
   let shadowCount = 0;
@@ -658,14 +674,14 @@ export function analyzePlate(input: AnalysisInput): AnalysisResult {
     for (let x = 0; x < w; x++) {
       const k = y * w + x;
       const i = k * 4;
-      const s = boxMean(softT, grid, x, y, 1);
+      const s = boxMean(softT, grid, x, y, feather);
       classMap[i] = canopyMask[k]! * 255;
       classMap[i + 1] = lawnMask[k]! * 255;
       classMap[i + 2] = water[k]! * 255;
       const paved = road[k] || (!veg[k] && !water[k] && exg[k]! < 0.02 && !built[k]) ? 1 : 0;
       classMap[i + 3] = (road[k] ? 255 : paved ? 110 : 0) as number;
       if (road[k]) pavedCount++;
-      if (shadow[k]) shadowCount++;
+      if (shadowWide[k]) shadowCount++;
       if (water[k]) waterCount++;
       gainMap[i] = fill[i]!;
       gainMap[i + 1] = fill[i + 1]!;
@@ -701,6 +717,70 @@ export function analyzePlate(input: AnalysisInput): AnalysisResult {
 }
 
 /** Sea and lakes are often not polygons on the map (OSM coastlines are lines): they read as large, smooth, flat, bluish regions. */
+/**
+ * The first shadow mask asks a pixel to be darker than its surroundings, so a shadow wider than those surroundings is
+ * missed. Where the mapped volumes must cast shadow under this sun, being dark against sunlit ground is proof enough.
+ */
+function extendShadows(
+  shadow: Uint8Array,
+  lum: Float32Array,
+  exg: Float32Array,
+  built: Uint8Array,
+  water: Uint8Array,
+  grid: Grid,
+  footprints: Footprint[],
+  heights: Record<string, HeightReading>,
+  sunAzimuth: number,
+  altitude: number,
+  mpp: number,
+) {
+  const { w, h } = grid;
+  const out = new Uint8Array(shadow);
+  if (!footprints.length) return out;
+  const step = Math.max(1, Math.round(1.5 / mpp));
+  const cols = Math.ceil(w / step);
+  const rows = Math.ceil(h / step);
+  const levels = new Uint8Array(cols * rows);
+  for (const fp of footprints) {
+    // Unknown heights get a low house: enough for the shadow at its foot, too little to invent a long one.
+    const tall = fp.tagHeight ?? heights[fp.id]?.h ?? 6;
+    fillRing(levels, { w: cols, h: rows }, fp.rings.map((ring) => ring.map((v) => v / step)), Math.max(1, Math.min(255, Math.round(tall))));
+  }
+  const surface = Float32Array.from(levels);
+  const expected = castShadows({ surface, ground: new Float32Array(surface.length), cols, rows, cellX: mpp * step, cellZ: mpp * step }, sunAzimuth, altitude);
+  let litSum = 0;
+  let litN = 0;
+  for (let y = 0; y < h; y += 2) {
+    for (let x = 0; x < w; x += 2) {
+      const k = y * w + x;
+      if (shadow[k] || built[k] || water[k] || exg[k]! > 0.045 || expected[Math.floor(y / step) * cols + Math.floor(x / step)]) continue;
+      litSum += lum[k]!;
+      litN++;
+    }
+  }
+  if (litN < 200) return out;
+  const lit = litSum / litN;
+  const raw = new Uint8Array(shadow);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const k = y * w + x;
+      if (raw[k] || built[k] || water[k] || !expected[Math.floor(y / step) * cols + Math.floor(x / step)]) continue;
+      // Grass is darker than paving to begin with, so it has to be darker still.
+      if (lum[k]! < lit * (exg[k]! > 0.045 ? 0.46 : 0.6)) raw[k] = 1;
+    }
+  }
+  // Keep what holds together, and close the pinholes that bright specks leave inside a real shadow.
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const k = y * w + x;
+      const around = raw[k - 1]! + raw[k + 1]! + raw[k - w]! + raw[k + w]!;
+      if (shadow[k]) continue;
+      if (raw[k] ? around >= 2 : around === 4 && !built[k] && !water[k]) out[k] = 1;
+    }
+  }
+  return out;
+}
+
 function markOpenWater(input: AnalysisInput, water: Uint8Array, built: Uint8Array, road: Uint8Array, texture: Float32Array, lum: Float32Array) {
   const { width: w, height: h, rgba, mpp, elevation, elevationStep } = input;
   if (!elevation || !elevationStep) return;

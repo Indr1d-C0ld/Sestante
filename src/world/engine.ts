@@ -10,6 +10,7 @@ import { buildFences, buildProps, buildRibbons, buildWater, Precipitation, type 
 import { Forest, Meadow } from "./nature.ts";
 import { PostChain } from "./post.ts";
 import { WorldQuery, type Hit } from "./query.ts";
+import { makeGroundMaterials } from "./ground.ts";
 import { canvasTexture, dataTexture, makeNoiseTexture, shade, U } from "./shading.ts";
 import type { Settings } from "./settings.ts";
 import { buildFigure, poseFigure, type AltEgo, type Figure } from "./avatar.ts";
@@ -180,6 +181,7 @@ export class Engine {
     this.query = new WorldQuery(this.heightAt);
 
     U.uNoise.value = makeNoiseTexture();
+    U.uMat.value ??= makeGroundMaterials();
     U.uHalf.value.set(data.projection.halfX, data.projection.halfZ);
     const aniso = this.renderer.capabilities.getMaxAnisotropy();
     this.plateTexture = canvasTexture(this.plate.canvas, Math.min(12, aniso));

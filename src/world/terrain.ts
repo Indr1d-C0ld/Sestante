@@ -1,12 +1,27 @@
 import * as THREE from "three";
 import type { CSM } from "three/addons/csm/CSM.js";
 import type { FarField, TerrainData } from "../field/load.ts";
+import { GROUND_LAYERS } from "./ground.ts";
 import { PLATE_GLSL, PROJECT_GLSL, PROV_GLSL, shade, U } from "./shading.ts";
+
+/** One ground layer at its own scale, with a second and slower reading of itself so that the tile does not show. */
+const MATERIAL_GLSL = /* glsl */ `
+uniform highp sampler2DArray uMat;
+vec4 groundLayer(vec2 xz, float layer, float tile, vec2 gx, vec2 gy) {
+  vec4 a = textureGrad(uMat, vec3(xz / tile, layer), gx / tile, gy / tile);
+  float wide = tile * 4.3;
+  vec2 r = vec2(xz.x * .819 - xz.y * .574, xz.x * .574 + xz.y * .819) / wide;
+  float b = textureGrad(uMat, vec3(r, layer), gx / wide, gy / wide).b;
+  return vec4(a.rg, a.b + (b - .5) * .7, a.a);
+}
+`;
 
 const GROUND_FRAG = /* glsl */ `
   vec4 cls;
-  vec3 albedo = plateAlbedo(vW.xz, cls);
   float dist = length(uCam - vW);
+  float close = (1. - smoothstep(10., 70., dist)) * min(1., uDetail * 1.25);
+  plateBlur = close * 1.6;
+  vec3 albedo = plateAlbedo(vW.xz, cls);
   float near = (1. - smoothstep(25., 240., dist)) * uDetail;
   vec2 xz = vW.xz;
   float nA = texture2D(uNoise, xz * .021).b;
@@ -23,7 +38,26 @@ const GROUND_FRAG = /* glsl */ `
   vec3 bareTone = albedo * (.94 + .12 * nB) * (.88 + .24 * nC) * (.82 + .36 * grit);
   float s = smoothstep(.0, .6, paved);
   vec3 near3 = mix(mix(bareTone, grassTone, veg), stoneTone, s * (1. - veg));
-  diffuseColor.rgb = mix(albedo, near3, near);
+  diffuseColor.rgb = mix(albedo, near3, near * (1. - .75 * close));
+  groundMat = vec4(.5, .5, .5, .9);
+  if (close > .004 && cls.b < .5) {
+    vec2 gx = dFdx(xz);
+    vec2 gy = dFdy(xz);
+    // Roads are asphalt; other hard ground is laid in slabs; green is lawn; the rest is bare earth.
+    float wRoad = smoothstep(.55, .85, paved);
+    float wHard = smoothstep(.2, .4, paved) * (1. - wRoad) * (1. - veg);
+    float wGreen = veg;
+    float wEarth = max(0., 1. - wRoad - wHard - wGreen);
+    wRoad *= 1. - veg;
+    vec4 m = vec4(0.);
+    if (wRoad > .01) m += groundLayer(xz, 0., ${GROUND_LAYERS[0].tile.toFixed(2)}, gx, gy) * wRoad;
+    if (wHard > .01) m += groundLayer(xz, 1., ${GROUND_LAYERS[1].tile.toFixed(2)}, gx, gy) * wHard;
+    if (wEarth > .01) m += groundLayer(xz, 2., ${GROUND_LAYERS[2].tile.toFixed(2)}, gx, gy) * wEarth;
+    if (wGreen > .01) m += groundLayer(xz, 3., ${GROUND_LAYERS[3].tile.toFixed(2)}, gx, gy) * wGreen;
+    m /= max(.001, wRoad + wHard + wEarth + wGreen);
+    groundMat = mix(groundMat, m, close);
+    diffuseColor.rgb *= 1. + (m.b - .5) * 1.5 * close;
+  }
   if (uGrid > .5) {
     vec2 g = abs(fract(vW.xz / 100. + .5) - .5) * 100.;
     float l = 1. - smoothstep(.0, .9, min(g.x, g.y));
@@ -32,10 +66,12 @@ const GROUND_FRAG = /* glsl */ `
   if (cls.b > .5) diffuseColor.rgb = albedo * .62;
   groundCls = cls;
   groundNear = near;
+  groundClose = close;
 `;
 
 const GROUND_ROUGH = /* glsl */ `
   roughnessFactor = mix(mix(.92, .78, groundCls.a), .98, max(groundCls.r, groundCls.g));
+  roughnessFactor = mix(roughnessFactor, groundMat.a, groundClose);
   if (groundCls.b > .5) roughnessFactor = .07;
 `;
 
@@ -53,8 +89,8 @@ const GROUND_NORMAL = /* glsl */ `
     float h0 = texture2D(uNoise, uvN * .083).b + texture2D(uNoise, uvN * .4).b * .5;
     float hx = texture2D(uNoise, (uvN + vec2(e * .25, 0.)) * .083).b + texture2D(uNoise, (uvN + vec2(e * .25, 0.)) * .4).b * .5;
     float hz = texture2D(uNoise, (uvN + vec2(0., e * .25)) * .083).b + texture2D(uNoise, (uvN + vec2(0., e * .25)) * .4).b * .5;
-    float amp = mix(.5, .1, smoothstep(.0, .6, groundCls.a)) * groundNear;
-    vec3 wPert = vec3(hx - h0, 0., hz - h0) * amp * 4.;
+    float amp = mix(.5, .1, smoothstep(.0, .6, groundCls.a)) * groundNear * (1. - .8 * groundClose);
+    vec3 wPert = vec3(hx - h0, 0., hz - h0) * amp * 4. + vec3(groundMat.r - .5, 0., groundMat.g - .5) * 2. * groundClose;
     normal = normalize(normal - (viewMatrix * vec4(wPert, 0.)).xyz);
   }
   diffuseColor.rgb = projectPhoto(diffuseColor.rgb, vW, inverseTransformDirection(normal, viewMatrix));
@@ -97,7 +133,7 @@ export function buildTerrain(terrain: TerrainData, csm: CSM | null) {
     new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, metalness: 0, envMapIntensity: 0.55 }),
     {
       key: "ground",
-      fragmentPars: `${PLATE_GLSL}\n${PROJECT_GLSL}\n${PROV_GLSL}\nvec4 groundCls; float groundNear;`,
+      fragmentPars: `${PLATE_GLSL}\n${PROJECT_GLSL}\n${PROV_GLSL}\n${MATERIAL_GLSL}\nvec4 groundCls; vec4 groundMat; float groundNear; float groundClose;`,
       map: GROUND_FRAG,
       afterRoughness: GROUND_ROUGH,
       afterNormal: GROUND_NORMAL,

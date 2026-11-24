@@ -1,9 +1,9 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { api, type LidarOffer } from "../core/api.ts";
 import { leastCostRoute, ROUTE_MODES, sightLines, type RouteMode, type SightLine } from "../core/routes.ts";
-import type { EvidenceStance, Hypothesis, SavedRoute } from "../core/types.ts";
+import type { BenchReport, EvidenceStance, Hypothesis, SavedRoute } from "../core/types.ts";
 import { corridorCanvas, formatDuration, routeGrid, sitesOf, WATER_RULES, type WaterRule } from "./ancient.ts";
-import { applyLidar, bareGround, reliefCanvas, shadedCanvas } from "./lidarTools.ts";
+import { applyLidar, bareGround, benchmark, reliefCanvas, shadedCanvas } from "./lidarTools.ts";
 import { CLUE_NAMES, type Candidate } from "../vision/anomalies.ts";
 import { exportDossier, gatherEvidence } from "./dossier.ts";
 import { investigate } from "./investigate.ts";
@@ -439,11 +439,12 @@ export function AncientRoutes(props: LabProps) {
 
 /** National airborne surveys: where they exist, the ground itself with the trees taken off. */
 export function LidarTab(props: LabProps) {
-  const { engine, expedition, onDrape, onLidarReport, onUseLidarTerrain, addNote, toast } = props;
+  const { engine, expedition, onDrape, onLidarReport, onBenchReport, onUseLidarTerrain, addNote, toast } = props;
   const [offers, setOffers] = useState<LidarOffer[] | null>(null);
   const [busy, setBusy] = useState("");
   const [radius, setRadius] = useState(15);
   const report = expedition.lidarReport ?? null;
+  const bench = expedition.benchReport ?? null;
   useEffect(() => {
     let live = true;
     api
@@ -543,10 +544,25 @@ export function LidarTab(props: LabProps) {
             <button className="btn tiny" onClick={onUseLidarTerrain}>
               Usalo come terreno del mondo
             </button>
+            <button
+              className="btn tiny"
+              disabled={!!busy || !offer.surface}
+              title={offer.surface ? "Non cambia nulla nel mondo: misura soltanto." : "Serve la superficie con edifici e chiome."}
+              onClick={() =>
+                work("Confronto la ricostruzione col laser…", async () => {
+                  const row = await benchmark(engine, offer);
+                  onBenchReport(row);
+                  addNote("sistema", `Banco di prova: ombre ${pct(row.shadow.iou)}, chiome ${pct(row.canopy.iou)}`, `${row.name}, celle di ${row.cell.toFixed(1)} m. Sovrapposizione fra ciò che la ripresa ha letto e ciò che il laser ha misurato.`, { instrument: "lidar" });
+                })
+              }
+            >
+              Banco di prova
+            </button>
           </div>
           {!offer.surface && <p className="small muted">{offer.name} pubblica solo il suolo: niente altezze degli edifici.</p>}
         </>
       )}
+      {bench && <BenchTable bench={bench} />}
       {report && (
         <div>
           <div className="section-title">Altezze dal rilievo: {report.name}</div>
@@ -589,5 +605,74 @@ export function LidarTab(props: LabProps) {
         </div>
       )}
     </>
+  );
+}
+
+const pct = (value: number) => `${Math.round(value * 100)}%`;
+const deg = (radians: number) => `${((radians * 180) / Math.PI).toFixed(0)}°`;
+
+/** The reconstruction scored against the survey: what was found, what was there, and how much of the two coincides. */
+function BenchTable({ bench }: { bench: BenchReport }) {
+  const sunOff = Math.abs(bench.sun.best - bench.sun.used) > 0.12 && bench.sun.iouBest > bench.sun.iouUsed + 0.05;
+  return (
+    <div>
+      <div className="section-title">Banco di prova: {bench.name}</div>
+      <p className="small">
+        Celle di {bench.cell.toFixed(1)} m{bench.plateDate ? `, ripresa del ${bench.plateDate}` : ""}. Il laser ha misurato le forme: qui si vede quanto la lettura della ripresa coincide con esse.
+      </p>
+      <table className="data">
+        <thead>
+          <tr>
+            <th>Lettura</th>
+            <th>Trovato giusto</th>
+            <th>Trovato sul totale</th>
+            <th>Sovrapposizione</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Ombre sul suolo aperto</td>
+            <td>{pct(bench.shadow.precision)}</td>
+            <td>{pct(bench.shadow.recall)}</td>
+            <td>{pct(bench.shadow.iou)}</td>
+          </tr>
+          <tr>
+            <td>Chiome oltre 3 m</td>
+            <td>{pct(bench.canopy.precision)}</td>
+            <td>{pct(bench.canopy.recall)}</td>
+            <td>{pct(bench.canopy.iou)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className={sunOff ? "small warn" : "small"}>
+        Sole usato a {deg(bench.sun.used)} sull'orizzonte ({bench.sun.method}); le ombre lette si spiegano meglio con {deg(bench.sun.best)}, sovrapposizione {pct(bench.sun.iouBest)}.
+        {sunOff && " La differenza è grande: la data della ripresa potrebbe non essere quella vera dello scatto."}
+      </p>
+      {(bench.heights.length > 0 || bench.shadowHeights) && (
+        <table className="data">
+          <thead>
+            <tr>
+              <th>Altezza</th>
+              <th>Edifici</th>
+              <th>Scarto tipico dal laser</th>
+              <th>Tendenza</th>
+              <th>Entro 3 m</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...bench.heights, ...(bench.shadowHeights ? [{ ...bench.shadowHeights, label: "ogni lettura dalle ombre" }] : [])].map((row) => (
+              <tr key={row.label}>
+                <td>{row.label}</td>
+                <td>{row.n}</td>
+                <td>{row.typical.toFixed(1)} m</td>
+                <td>{row.bias > 0 ? "+" : ""}{row.bias.toFixed(1)} m</td>
+                <td>{pct(row.within3)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p className="small muted">Il rilievo ha una data sua: alberi spogli o cresciuti e cantieri abbassano i punteggi senza che la lettura sia sbagliata. Le ombre sono giudicate solo sul suolo aperto.</p>
+    </div>
   );
 }

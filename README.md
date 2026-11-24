@@ -284,7 +284,7 @@ Le legge solo il server: non arrivano mai al browser, non finiscono nei salvatag
 | Studi | Inquadrature salvate con ora, meteo, scatto e strato |
 | Vie antiche | Percorsi di minor fatica, corridoi, visibilità fra siti |
 | Foto | Dove è stata scattata una foto, dall'orizzonte e dalle ombre |
-| LiDAR | Rilievi laser nazionali aperti: suolo, tracce, altezze |
+| LiDAR | Rilievi laser nazionali aperti: suolo, tracce, altezze, e il banco di prova che dà un voto alla ricostruzione |
 | Volumi | Cubatura del riquadro per fonte, strutture più voluminose, masse tracciate sul terreno, verifica degli intervalli col laser |
 | Ipotesi | Banco delle ombre: disegna un volume, calcola la sua ombra in ogni ripresa e la confronta con il terreno intorno |
 | Sezione | Profilo di suolo e costruito lungo un tracciato |
@@ -380,10 +380,11 @@ Ogni numero dichiara la sua fonte. La scheda di un edificio dice se l'altezza è
 
 | Cosa | Da dove |
 | --- | --- |
-| Colore del suolo e dei tetti | La lastra stessa, con le ombre incise rimosse per lasciar posto a quelle vere |
+| Colore del suolo e dei tetti | La lastra stessa, con le ombre incise rimosse per lasciar posto a quelle vere. Dove gli edifici noti devono gettare ombra con quel sole, basta che il suolo sia scuro rispetto a quello al sole: così si riconoscono anche le ombre più larghe dei loro dintorni |
+| Grana del suolo da vicino | Inventata, e dichiarata tale: entro 70 m asfalto sulle strade, lastre sul resto del suolo duro, terra, fondo erboso. La classe viene dalla lastra, la grana no. Sotto i piedi il colore della lastra è ammorbidito, perché un pixel di 30 cm a un metro di distanza è una macchia. Il cursore "Dettaglio ravvicinato del suolo" a zero restituisce la lastra nuda |
 | Rilievo | Terrarium (SRTM e altri), Copernicus GLO-30 o NASADEM, a scelta nelle impostazioni; lisciato di più dove è costruito, perché entrambi misurano anche i tetti |
 | Edifici | OSM: sagome, cortili, parti, forme del tetto, materiali. Co-registrati sulla lastra |
-| Sole dello scatto | Direzione delle ombre attorno agli edifici più data di acquisizione: ne esce l'istante dello scatto |
+| Sole dello scatto | Direzione delle ombre attorno agli edifici più data di acquisizione: ne esce l'istante dello scatto. Se almeno dieci edifici di altezza nota indicano un sole lontano più di 24° da quello della data, la data è messa in dubbio e vale il sole letto dagli edifici |
 | Altezze mancanti | Lunghezza dell'ombra × tangente del sole, tarata sugli edifici di altezza nota. Con tutte le riprese lette: mediana pesata fra più date, con margine d'errore. Un'altezza scritta sulla mappa non viene mai sovrascritta |
 | Alberi | Chiome individuate sulla lastra, altezza dall'ombra, colore dal pixel; alberi OSM con specie dove esistono |
 | Edifici non mappati | Tetto compatto con la propria ombra, solo se nessun edificio mappato spiega quell'ombra |
@@ -411,6 +412,27 @@ Ogni strumento è stato provato dove la risposta esiste già. I test automatici 
 | Foto da localizzare | Interno del Colosseo | "Ambiguo" o "impossibile", come deve |
 
 Le altre chiavi di lettura sono nel codice: `tests/` contiene le scene sintetiche, e ogni scheda del Laboratorio mostra su quante misure si regge ciò che dice.
+
+### Banco di prova col LiDAR
+
+Dove un rilievo laser pubblica anche la superficie, la scheda LiDAR del Laboratorio confronta ciò che l'analisi ha letto dalla lastra con ciò che il laser ha misurato, senza cambiare nulla nel mondo: le ombre contro quelle che le forme rilevate getterebbero con quel sole, le chiome contro ciò che supera i 3 m fuori dagli edifici, le altezze fonte per fonte, e l'altezza del sole che spiega meglio le ombre. La sovrapposizione è l'area comune divisa per l'area complessiva.
+
+Quattro riquadri di 600 m, celle di 1 m, novembre 2026:
+
+| Luogo | Rilievo | Ombre, prima | Ombre, ora | Chiome | Sole usato, e quello che spiega meglio le ombre |
+| --- | --- | --- | --- | --- | --- |
+| Amsterdam | AHN | 37% | 53% | 15% | 48°, 38° |
+| Parigi | IGN LiDAR HD | 33% | 39% | 28% | 35°, 46° |
+| Londra | Environment Agency | 31% | 36% | 25% | 51°, 60° |
+| Zurigo | swisstopo | 60% | 68% | 25% | 40°, 40° |
+
+"Prima" è la maschera che chiedeva a ogni pixel d'essere più scuro dei suoi dintorni. Cosa dicono questi numeri:
+
+- **Amsterdam.** La data dichiarata, 13 gennaio, darebbe un sole a 15°, impossibile per quelle ombre: è il caso che ha fatto nascere il controllo sulla data. Il sole letto dagli edifici, 48°, resta però una decina di gradi sopra quello che spiega meglio le ombre.
+- **Chiome.** Fra il 15 e il 28%: una foto dall'alto in inverno o a inizio primavera non mostra gli alberi spogli che il laser vede. Non è un voto alla lettura, ma dice quanto poco ci si può fidare delle chiome fuori stagione.
+- **Altezze dalle ombre.** Risultano basse ovunque: tendenza fra −1,2 m ad Amsterdam e −9,2 m a Zurigo, dove le ombre cadono su un pendio e su altri edifici. Qui non è stato corretto nulla.
+
+Il rilievo ha una data sua, diversa da quella della lastra: cantieri e alberi cresciuti abbassano i punteggi senza che la lettura sia sbagliata.
 
 ## MapTilesDownloader
 
@@ -442,6 +464,8 @@ Tecnologie: Node con TypeScript nativo e `node:sqlite` sul server; React 19, Map
 ## Limiti noti
 
 - Non c'è autenticazione: il server ascolta solo su `127.0.0.1`, e per aprirlo in rete serve un proxy con password.
+- Sotto gli alberi il suolo prende il colore delle chiome, perché la lastra lì mostra quelle: un vialetto alberato appare scuro e verdastro.
+- La grana del suolo da vicino è una sola per classe: l'asfalto di Roma e quello di Amsterdam sono uguali, e i sanpietrini non esistono finché non si leggono i tag `surface` di OSM.
 - Non esistono interni: gli edifici si vedono da fuori e si sale sui tetti, non si entra.
 - Le facciate sono procedurali, non fotografate. Il satellite vede solo i tetti. La foto proiettata le copre solo vicino al punto di scatto e non calcola chi nasconde cosa: persone e auto finiscono stese a terra, e l'allineamento va ritoccato a mano.
 - Automobili e persone restano dipinte nella lastra.
