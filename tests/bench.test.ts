@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { castShadows, fitSunAltitude, maskScore, resampleMask, type SurfaceGrid } from "../src/vision/bench.ts";
-import { analyzePlate } from "../src/vision/analyze.ts";
+import { analyzePlate, fillRing, shadowHeights, type Footprint } from "../src/vision/analyze.ts";
 
 /** Flat ground with one block: 10 m tall, 10 cells wide, on a 1 m grid. */
 function block(size = 80, tall = 10): SurfaceGrid {
@@ -86,4 +86,42 @@ test("un'ombra più larga dei suoi dintorni viene riconosciuta sotto un edificio
   assert.ok(inside / total > 0.95, `riconosciuto ${(inside / total * 100).toFixed(0)}%`);
   // Sunlit ground far from the shadow stays untouched.
   assert.equal(result.gainMap[(60 * size + 200) * 4 + 3], 0);
+});
+
+/** A 20 m square house on a 1 m raster, with its shadow painted northwards for `length` metres. */
+function houseWithShadow(length: number) {
+  const w = 120;
+  const grid = { w, h: w };
+  const shadow = new Uint8Array(w * w);
+  const built = new Uint8Array(w * w);
+  const house: Footprint = { id: "casa", rings: [[50, 80, 70, 80, 70, 100, 50, 100]] };
+  fillRing(built, grid, house.rings);
+  for (let y = 80 - length; y < 80; y++) for (let x = 50; x < 70; x++) shadow[y * w + x] = 1;
+  return { w, grid, shadow, built, house };
+}
+
+test("una lunghezza d'ombra non si ferma a un'auto al sole né al tetto inclinato sulla strada", () => {
+  const { w, grid, shadow, built, house } = houseWithShadow(30);
+  // The plate's lean lays three metres of lit roof over the foot of the shadow, and a pale van stands in the middle of it.
+  for (let y = 77; y < 80; y++) for (let x = 50; x < 70; x++) shadow[y * w + x] = 0;
+  for (let y = 62; y < 64; y++) for (let x = 50; x < 70; x++) shadow[y * w + x] = 0;
+  const run = shadowHeights(shadow, built, grid, [house], 0, 1).casa!;
+  assert.ok(Math.abs(run.length - 30) <= 1, `lunghezza ${run.length}`);
+  assert.equal(run.floor, 0);
+});
+
+test("un'ombra che arriva al palazzo di fronte dà un minimo, non una misura", () => {
+  const { grid, shadow, built, house } = houseWithShadow(14);
+  const opposite: Footprint = { id: "fronte", rings: [[40, 46, 80, 46, 80, 66, 40, 66]] };
+  fillRing(built, grid, opposite.rings);
+  const run = shadowHeights(shadow, built, grid, [house, opposite], 0, 1).casa!;
+  assert.equal(run.length, 0);
+  assert.ok(Math.abs(run.floor - 14) <= 1, `minimo ${run.floor}`);
+});
+
+test("l'acqua scura non allunga un'ombra", () => {
+  const { w, grid, shadow, built, house } = houseWithShadow(40);
+  const water = new Uint8Array(w * w);
+  for (let y = 0; y < 60; y++) for (let x = 0; x < w; x++) water[y * w + x] = 1;
+  assert.equal(shadowHeights(shadow, built, grid, [house], 0, 1, water).casa, undefined);
 });

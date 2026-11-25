@@ -38,7 +38,8 @@ export type SunReading = {
   dateAltitude?: number;
 };
 
-export type HeightReading = { h: number | null; confidence: number; rays: number };
+/** `atLeast` is the height a shadow stopped by the house opposite still proves: a floor, not a measure. */
+export type HeightReading = { h: number | null; confidence: number; rays: number; atLeast?: number };
 
 export type TreeHeightOrigin = "mappa" | "ombra" | "chioma" | "griglia";
 
@@ -280,46 +281,90 @@ function percentile(values: number[], q: number) {
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))] ?? 0;
 }
 
-function shadowHeights(shadow: Uint8Array, built: Uint8Array, grid: Grid, footprints: Footprint[], azimuth: number, mpp: number) {
+/** What a footprint's shadow says. `length` comes from rays that end on open ground, `floor` from those a building stops first. */
+export type ShadowRun = { length: number; rays: number; spread: number; floor: number };
+
+/**
+ * Shadow length of each footprint, in metres along the shadow direction. A ray's shadow is the stretch that is mostly dark:
+ * a parked car or a pale kerb does not end it, and it may begin a little way out, where the plate's lean lays the roof over
+ * the street. In a narrow street the shadow climbs the house opposite: that ray knows only that the shadow is at least as
+ * long as the street is wide, so it sets a floor and is kept out of the length.
+ */
+export function shadowHeights(shadow: Uint8Array, built: Uint8Array, grid: Grid, footprints: Footprint[], azimuth: number, mpp: number, water?: Uint8Array) {
   const { w, h } = grid;
   const dx = Math.sin(azimuth);
   const dy = -Math.cos(azimuth);
-  const out: Record<string, { length: number; rays: number; spread: number }> = {};
+  const out: Record<string, ShadowRun> = {};
   const limit = 140 / mpp;
+  const lead = 8 / mpp;
+  const margin = 4 / mpp;
+  const giveUp = 6 / mpp;
+  const own = 1.5 / mpp;
   for (const fp of footprints) {
-    const lengths: number[] = [];
-    const mask = 2;
-    for (const p of boundarySamples(fp, Math.max(1, 1.5 / mpp))) {
+    const free: number[] = [];
+    const stopped: number[] = [];
+    let total = 0;
+    // Courtyards are left out: their shadows belong to the wings around them.
+    for (const p of boundarySamples({ id: fp.id, rings: [fp.rings[0]!] }, Math.max(1, 1.5 / mpp))) {
       if (p.nx * dx + p.ny * dy < 0.4) continue;
-      let gap = 0;
-      let last = 0;
-      let blocked = false;
+      let score = 0;
+      let best = 0;
+      let end = 0;
+      let wall = 0;
+      let edge = false;
       for (let s = 1; s < limit; s += 1) {
         const x = Math.round(p.x + dx * s);
         const y = Math.round(p.y + dy * s);
         if (x < 0 || y < 0 || x >= w || y >= h) {
-          blocked = true;
+          wall = s;
+          edge = true;
           break;
         }
         const k = y * w + x;
-        if (built[k] && s > 2 / mpp) {
-          blocked = gap < 3;
+        if (built[k] && s > own) {
+          wall = s;
           break;
         }
-        if (shadow[k]) {
-          last = s;
-          gap = 0;
-        } else if (++gap > Math.max(2, 1 / mpp)) break;
+        // Dark water reads as shadow: past the bank nothing can be told.
+        if (water?.[k]) {
+          wall = s;
+          edge = true;
+          break;
+        }
+        if (score < 0 && s <= lead) score = 0;
+        score += shadow[k] ? 0.5 : -0.5;
+        if (score > best) {
+          best = score;
+          end = s;
+        }
+        if (score < best - giveUp / 2) break;
       }
-      if (!blocked && last * mpp >= 1.5) lengths.push(last * mpp);
+      // A neighbour sharing the wall says nothing either way.
+      if (wall && wall < margin) continue;
+      if (wall && end >= wall - margin) {
+        if (!edge) {
+          stopped.push(wall * mpp);
+          total++;
+        }
+        continue;
+      }
+      total++;
+      if (end * mpp >= 1.5) free.push(end * mpp);
     }
-    void mask;
-    if (lengths.length < 4) continue;
-    const q50 = percentile(lengths, 0.5);
+    // A ray that runs down a street already in someone else's shadow reads far too long: the building's own rays outvote it.
+    const usual = percentile(free, 0.5);
+    const kept = free.filter((v) => v <= usual * 1.6);
+    free.length = 0;
+    free.push(...kept);
+    const measured = free.length >= 4 && free.length >= total * 0.3;
+    const floor = stopped.length >= 3 ? percentile(stopped, 0.5) : 0;
+    if (!measured && !floor) continue;
+    const q50 = measured ? percentile(free, 0.5) : 0;
     out[fp.id] = {
-      length: percentile(lengths, 0.72),
-      rays: lengths.length,
-      spread: q50 > 0 ? (percentile(lengths, 0.85) - percentile(lengths, 0.25)) / q50 : 1,
+      length: measured ? percentile(free, 0.75) : 0,
+      rays: measured ? free.length : 0,
+      spread: q50 > 0 ? (percentile(free, 0.85) - percentile(free, 0.25)) / q50 : 1,
+      floor,
     };
   }
   return out;
@@ -538,7 +583,7 @@ export function analyzePlate(input: AnalysisInput): AnalysisResult {
   }
 
   const shadowAz = (sun.sunAzimuth + Math.PI) % (2 * Math.PI);
-  const rawHeights = shadowHeights(shadow, built, grid, footprints, shadowAz, mpp);
+  const rawHeights = shadowHeights(shadow, built, grid, footprints, shadowAz, mpp, water);
 
   // Buildings with a mapped height are ground truth: they check the solar geometry and rescue undated plates.
   const tanSamples: number[] = [];
@@ -552,7 +597,7 @@ export function analyzePlate(input: AnalysisInput): AnalysisResult {
     sun.crossCheckSamples = tanSamples.length;
     if (!input.captureDate && !input.manualSun) sun.altitude = sun.crossCheckAltitude;
     // A mosaic's stated date is sometimes another strip's. Many mapped heights agreeing on a very different sun outweigh it.
-    // The check itself reads some ten degrees high, because the shadow mask stops short of the penumbra: only a wide gap counts.
+    // The check itself reads from two to twelve degrees high, because the shadow mask misses part of the real shadow: only a wide gap counts.
     else if (!input.manualSun && tanSamples.length >= 10 && Math.abs(sun.crossCheckAltitude - sun.altitude) > 0.42) {
       sun.dateAltitude = sun.altitude;
       sun.altitude = sun.crossCheckAltitude;
@@ -585,15 +630,18 @@ export function analyzePlate(input: AnalysisInput): AnalysisResult {
     }
     if (samples >= 6) evidence[fp.id] = { edge: contrast / samples, veg: green / samples };
   }
+  const readHeights: number[] = [];
   for (const fp of footprints) {
     const raw = rawHeights[fp.id];
-    heights[fp.id] = raw
+    heights[fp.id] = raw?.length
       ? {
           h: Math.max(2.4, Math.min(320, raw.length * tan)),
           confidence: Math.max(0.05, Math.min(1, raw.rays / 24) * Math.max(0.1, 1 - raw.spread) * Math.max(0.25, sun.confidence)),
           rays: raw.rays,
         }
       : { h: null, confidence: 0, rays: 0 };
+    if (raw?.floor) heights[fp.id]!.atLeast = Math.min(320, raw.floor * tan);
+    if (raw?.length) readHeights.push(raw.length * tan);
     const ring = fp.rings[0]!;
     let cx = 0;
     let cy = 0;
@@ -607,6 +655,15 @@ export function analyzePlate(input: AnalysisInput): AnalysisResult {
       return [rgba[k * 4]! / 255, rgba[k * 4 + 1]! / 255, rgba[k * 4 + 2]! / 255] as [number, number, number];
     };
     roofTones[fp.id] = toneAt(cx / count, cy / count);
+  }
+
+  // A tower among houses is possible, but a shadow that runs on into a taller neighbour's is likelier: the value stays, trust drops.
+  if (readHeights.length >= 8) {
+    const usual = percentile(readHeights, 0.5);
+    for (const fp of footprints) {
+      const row = heights[fp.id]!;
+      if (row.h != null && row.h > usual * 2 && row.h > usual + 12) row.confidence *= 0.3;
+    }
   }
 
   const shadowWide = extendShadows(shadow, lum, exg, built, water, grid, footprints, heights, sun.sunAzimuth, Math.atan(tan), mpp);
@@ -743,7 +800,7 @@ function extendShadows(
   const levels = new Uint8Array(cols * rows);
   for (const fp of footprints) {
     // Unknown heights get a low house: enough for the shadow at its foot, too little to invent a long one.
-    const tall = fp.tagHeight ?? heights[fp.id]?.h ?? 6;
+    const tall = fp.tagHeight ?? Math.max(heights[fp.id]?.h ?? 6, heights[fp.id]?.atLeast ?? 0);
     fillRing(levels, { w: cols, h: rows }, fp.rings.map((ring) => ring.map((v) => v / step)), Math.max(1, Math.min(255, Math.round(tall))));
   }
   const surface = Float32Array.from(levels);

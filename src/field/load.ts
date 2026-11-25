@@ -43,6 +43,8 @@ export type Building = {
   hidden: boolean;
   area: number;
   shadowHeight: number | null;
+  /** What a shadow stopped by the house opposite still proves: this building is at least this tall. */
+  shadowFloor?: number;
   /** Spread of the multi-date reading, when the shots were read together. */
   range?: [number, number];
   shots?: number;
@@ -733,7 +735,7 @@ export async function loadField(spec: FieldSpec, onStep: (text: string) => void,
       source = "OSM piani";
       confidence = 0.85;
     } else if (read?.h != null && read.confidence > 0.2) {
-      height = read.h;
+      height = Math.max(read.h, read.atLeast ?? 0);
       source = "ombra";
       confidence = read.confidence;
     } else {
@@ -748,6 +750,8 @@ export async function loadField(spec: FieldSpec, onStep: (text: string) => void,
         source = "tipo edilizio";
         confidence = 0.2;
       }
+      // A guess may not go below what the shadow proves, even when the shadow could not be measured whole.
+      if (read?.atLeast != null && read.atLeast > height) height = read.atLeast;
     }
     const outer = rings[0]!;
     let base = Infinity;
@@ -788,6 +792,7 @@ export async function loadField(spec: FieldSpec, onStep: (text: string) => void,
       base,
       top: sum / count + height,
       shadowHeight: read?.h ?? null,
+      shadowFloor: read?.atLeast,
     } satisfies Building;
   });
 

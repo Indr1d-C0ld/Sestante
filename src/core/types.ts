@@ -163,6 +163,10 @@ export type BenchReport = {
   heights: { label: string; n: number; bias: number; typical: number; within3: number }[];
   /** Heights read from shadows alone, whatever source the building ended up with. */
   shadowHeights: { label: string; n: number; bias: number; typical: number; within3: number } | null;
+  /** The same readings against the roof's middle level: a shadow is cast by the eaves, and the survey's top is the ridge. */
+  shadowRoof?: { label: string; n: number; bias: number; typical: number; within3: number } | null;
+  /** How many floors left by stopped shadows stay under the surveyed top. */
+  shadowFloors?: { n: number; held: number } | null;
   shadow: MaskScoreRow;
   canopy: MaskScoreRow;
   sun: { used: number; method: string; best: number; iouUsed: number; iouBest: number };

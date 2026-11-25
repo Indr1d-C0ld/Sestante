@@ -385,7 +385,7 @@ Ogni numero dichiara la sua fonte. La scheda di un edificio dice se l'altezza è
 | Rilievo | Terrarium (SRTM e altri), Copernicus GLO-30 o NASADEM, a scelta nelle impostazioni; lisciato di più dove è costruito, perché entrambi misurano anche i tetti |
 | Edifici | OSM: sagome, cortili, parti, forme del tetto, materiali. Co-registrati sulla lastra |
 | Sole dello scatto | Direzione delle ombre attorno agli edifici più data di acquisizione: ne esce l'istante dello scatto. Se almeno dieci edifici di altezza nota indicano un sole lontano più di 24° da quello della data, la data è messa in dubbio e vale il sole letto dagli edifici |
-| Altezze mancanti | Lunghezza dell'ombra × tangente del sole, tarata sugli edifici di altezza nota. Con tutte le riprese lette: mediana pesata fra più date, con margine d'errore. Un'altezza scritta sulla mappa non viene mai sovrascritta |
+| Altezze mancanti | Lunghezza dell'ombra × tangente del sole, tarata sugli edifici di altezza nota. Un'ombra fermata dal palazzo di fronte dà solo un'altezza minima, indicata come tale nella scheda dell'edificio. Con tutte le riprese lette: mediana pesata fra più date, con margine d'errore. Un'altezza scritta sulla mappa non viene mai sovrascritta |
 | Alberi | Chiome individuate sulla lastra, altezza dall'ombra, colore dal pixel; alberi OSM con specie dove esistono |
 | Edifici non mappati | Tetto compatto con la propria ombra, solo se nessun edificio mappato spiega quell'ombra |
 | Acqua | Poligoni OSM, più le aree grandi, lisce, piatte sul DEM e bluastre |
@@ -421,16 +421,25 @@ Quattro riquadri di 600 m, celle di 1 m, novembre 2026:
 
 | Luogo | Rilievo | Ombre, prima | Ombre, ora | Chiome | Sole usato, e quello che spiega meglio le ombre |
 | --- | --- | --- | --- | --- | --- |
-| Amsterdam | AHN | 37% | 53% | 15% | 48°, 38° |
-| Parigi | IGN LiDAR HD | 33% | 39% | 28% | 35°, 46° |
-| Londra | Environment Agency | 31% | 36% | 25% | 51°, 60° |
-| Zurigo | swisstopo | 60% | 68% | 25% | 40°, 40° |
+| Amsterdam | AHN | 37% | 55% | 15% | 46°, 38° |
+| Parigi | IGN LiDAR HD | 33% | 46% | 28% | 35°, 44° |
+| Londra | Environment Agency | 31% | 39% | 25% | 51°, 58° |
+| Zurigo | swisstopo | 60% | 70% | 25% | 40°, 40° |
 
 "Prima" è la maschera che chiedeva a ogni pixel d'essere più scuro dei suoi dintorni. Cosa dicono questi numeri:
 
-- **Amsterdam.** La data dichiarata, 13 gennaio, darebbe un sole a 15°, impossibile per quelle ombre: è il caso che ha fatto nascere il controllo sulla data. Il sole letto dagli edifici, 48°, resta però una decina di gradi sopra quello che spiega meglio le ombre.
+- **Amsterdam.** La data dichiarata, 13 gennaio, darebbe un sole a 15°, impossibile per quelle ombre: è il caso che ha fatto nascere il controllo sulla data. Il sole letto dagli edifici, 46°, resta però otto gradi sopra quello che spiega meglio le ombre.
 - **Chiome.** Fra il 15 e il 28%: una foto dall'alto in inverno o a inizio primavera non mostra gli alberi spogli che il laser vede. Non è un voto alla lettura, ma dice quanto poco ci si può fidare delle chiome fuori stagione.
-- **Altezze dalle ombre.** Risultano basse ovunque: tendenza fra −1,2 m ad Amsterdam e −9,2 m a Zurigo, dove le ombre cadono su un pendio e su altri edifici. Qui non è stato corretto nulla.
+- **Altezze dalle ombre.** La prima misura le dava basse ovunque, fino a −9,2 m a Zurigo. Le cause erano due. La lettura seguiva ogni raggio e si fermava al primo metro senza ombra, che fosse un'auto al sole o il tetto che la lastra inclinata stende sulla strada. E nelle vie strette l'ombra finisce contro il palazzo di fronte: quella lunghezza è la larghezza della via, non l'altezza dell'edificio, ma veniva presa per una misura. Ora l'ombra di un raggio è il tratto in prevalenza scuro, e un raggio fermato da un altro edificio dà solo un'altezza minima, che alza le stime per quartiere o per tipo quando sono più basse.
+
+| Luogo | Letture, prima | Scarto tipico, tendenza | Letture, ora | Scarto tipico, tendenza | Contro il tetto a metà | Minime confermate dal laser |
+| --- | --- | --- | --- | --- | --- | --- |
+| Amsterdam | 176 | 3,2 m, −1,2 m | 158 | 3,1 m, −0,3 m | 3,6 m, +1,3 m | 106 su 129 |
+| Parigi | 65 | 5,1 m, −1,9 m | 146 | 7,5 m, −4,2 m | 6,5 m, −1,0 m | 74 su 85 |
+| Londra | 133 | 4,9 m, −4,6 m | 184 | 4,9 m, −4,5 m | 3,6 m, −1,7 m | 81 su 93 |
+| Zurigo | 187 | 9,2 m, −9,2 m | 214 | 2,9 m, −2,4 m | 3,1 m, −0,1 m | 188 su 200 |
+
+  Zurigo è corretta, Amsterdam e Londra restano dov'erano, **Parigi è peggiorata**: le letture sono più del doppio ma più disperse, perché lì la maschera trova appena metà dell'ombra vera e la lastra è inclinata di una ventina di gradi. Il laser misura fino al colmo, mentre un'ombra nasce dalla gronda: contro il livello a metà del tetto la tendenza quasi sparisce, e una prova fatta dando alla lettura le ombre del laser stesso conferma che è quello il livello che un'ombra può misurare. Nei tetti a falde resta quindi uno scarto di due o tre metri dal colmo che non è un errore di lettura.
 
 Il rilievo ha una data sua, diversa da quella della lastra: cantieri e alberi cresciuti abbassano i punteggi senza che la lettura sia sbagliata.
 
@@ -471,7 +480,7 @@ Tecnologie: Node con TypeScript nativo e `node:sqlite` sul server; React 19, Map
 - Automobili e persone restano dipinte nella lastra.
 - Il suolo oltre il riquadro è un mosaico a bassa risoluzione, senza edifici.
 - Dove SRTM ha già registrato una struttura massiccia, come le piramidi di Giza, il rilievo e l'edificio mappato si sovrappongono.
-- Le altezze lette dalle ombre risentono dell'inclinazione del satellite e di ciò su cui cade l'ombra: sono stime, e la scheda ne riporta l'attendibilità.
+- Le altezze lette dalle ombre risentono dell'inclinazione del satellite e di ciò su cui cade l'ombra: sono stime, e la scheda ne riporta l'attendibilità. Misurano il livello della gronda, non il colmo. Dove la maschera delle ombre è povera, come nel riquadro di Parigi, lo scarto tipico supera i 7 m.
 - La datazione degli edifici può sbagliare con alberi e cantieri, e sul Colosseo non esiste una verità di confronto: ogni voce riporta la certezza e va controllata a occhio. Gli scatti con la sola data di pubblicazione non contribuiscono.
 - Il banco delle ombre si confonde dove altri edifici o alberi proiettano ombra sulla stessa zona.
 - Le anomalie della vegetazione lavorano a 10 m per pixel: mostrano solo tracce grandi, e la causa va verificata.

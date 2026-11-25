@@ -166,11 +166,21 @@ export async function benchmark(engine: Engine, offer: LidarOffer): Promise<Benc
   const built = new Uint8Array(cols * rows);
   const bySource = new Map<string, number[]>();
   const fromShadows: number[] = [];
+  const fromShadowsRoof: number[] = [];
+  let floors = 0;
+  let floorsHeld = 0;
   for (const { b, row, cells } of standingBuildings(engine, dsm, ground, cols, rows)) {
     for (const k of cells) built[k] = 1;
     if (row.coverage < 0.5 || row.height < 2 || b.source === "LiDAR") continue;
     bySource.set(b.source, [...(bySource.get(b.source) ?? []), b.height - row.height]);
-    if (b.shadowHeight != null) fromShadows.push(b.shadowHeight - row.height);
+    if (b.shadowHeight != null) {
+      fromShadows.push(b.shadowHeight - row.height);
+      fromShadowsRoof.push(b.shadowHeight - row.roofMedian);
+    }
+    if (b.shadowFloor != null) {
+      floors++;
+      if (b.shadowFloor <= row.height + 1.5) floorsHeld++;
+    }
   }
 
   const a = engine.data.plate.analysis;
@@ -199,6 +209,8 @@ export async function benchmark(engine: Engine, offer: LidarOffer): Promise<Benc
     plateDate: engine.data.plate.ref.kind === "tiles" ? (engine.data.plate.ref.date ?? null) : (engine.data.plate.ref.capture?.date ?? null),
     heights: [...bySource].map(([label, errors]) => errorStats(label, errors)).sort((x, y) => y.n - x.n),
     shadowHeights: fromShadows.length ? errorStats("ombra", fromShadows) : null,
+    shadowRoof: fromShadowsRoof.length ? errorStats("ombra", fromShadowsRoof) : null,
+    shadowFloors: floors ? { n: floors, held: floorsHeld } : null,
     shadow,
     canopy: maskScore(canopyFound, tall, unbuilt),
     sun: { used: a.sun.altitude, method: a.sun.method, best: fit.altitude, iouUsed: shadow.iou, iouBest: fit.iou },

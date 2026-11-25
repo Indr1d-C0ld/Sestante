@@ -660,7 +660,11 @@ function BenchTable({ bench }: { bench: BenchReport }) {
             </tr>
           </thead>
           <tbody>
-            {[...bench.heights, ...(bench.shadowHeights ? [{ ...bench.shadowHeights, label: "ogni lettura dalle ombre" }] : [])].map((row) => (
+            {[
+              ...bench.heights,
+              ...(bench.shadowHeights ? [{ ...bench.shadowHeights, label: "ogni lettura dalle ombre, contro il colmo" }] : []),
+              ...(bench.shadowRoof ? [{ ...bench.shadowRoof, label: "ogni lettura dalle ombre, contro il tetto a metà" }] : []),
+            ].map((row) => (
               <tr key={row.label}>
                 <td>{row.label}</td>
                 <td>{row.n}</td>
@@ -672,7 +676,12 @@ function BenchTable({ bench }: { bench: BenchReport }) {
           </tbody>
         </table>
       )}
-      <p className="small muted">Il rilievo ha una data sua: alberi spogli o cresciuti e cantieri abbassano i punteggi senza che la lettura sia sbagliata. Le ombre sono giudicate solo sul suolo aperto.</p>
+      {bench.shadowFloors && (
+        <p className="small">
+          Ombre fermate dal palazzo di fronte: per {bench.shadowFloors.n} edifici danno un'altezza minima, che il laser conferma in {bench.shadowFloors.held} casi.
+        </p>
+      )}
+      <p className="small muted">Un'ombra nasce dalla gronda, mentre il laser misura fino al colmo: per questo le letture dalle ombre sono confrontate anche con il livello a metà del tetto. Il rilievo ha una data sua: alberi spogli o cresciuti e cantieri abbassano i punteggi senza che la lettura sia sbagliata. Le ombre sono giudicate solo sul suolo aperto.</p>
     </div>
   );
 }

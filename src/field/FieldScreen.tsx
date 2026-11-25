@@ -394,6 +394,7 @@ export function FieldScreen({ expedition: initial, canvas, findings, study, onEx
         ["Sedime", `${b.area.toFixed(0)} m²`],
       ];
       if (b.shadowHeight != null && b.source !== "ombra") rows.push(["Dall'ombra", `${b.shadowHeight.toFixed(1)} m`]);
+      if (b.shadowFloor != null) rows.push(["Ombra fermata di fronte", `almeno ${b.shadowFloor.toFixed(1)} m`]);
       const strata = expRef.current.strata;
       const series = strata?.heights[b.id];
       if (series) rows.push(["Da più riprese", `${series.h.toFixed(1)} m (${series.low.toFixed(1)}–${series.high.toFixed(1)}), ${series.n} misure`]);
