@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { castShadows, fitSunAltitude, maskScore, resampleMask, type SurfaceGrid } from "../src/vision/bench.ts";
 import { describeLean, leanFrom, leanFromSurface } from "../src/vision/lean.ts";
 import { surveyedParts } from "../src/core/lidarParts.ts";
-import { distanceToRings, insideRings, nearRectangle, presumePitched, roofSurfaceAt, surveyedRoof } from "../src/core/roofs.ts";
+import { distanceToRings, insideRings, mainDirection, nearRectangle, presumePitched, roofSurfaceAt, smoothRoof, surveyedRoof } from "../src/core/roofs.ts";
 import { aboveLevels, storeyHeight } from "../src/core/storeys.ts";
 import { analyzePlate, asphaltShadowLevel, fillRing, greenCast, leafOn, shadowHeights, type Footprint } from "../src/vision/analyze.ts";
 
@@ -266,6 +266,35 @@ test("il tetto dal rilievo sta dentro la pianta, ne copre l'area e prende le quo
   const ridge = roof.ys.filter((_, k) => Math.abs(roof.zs[k]! - 5) < 0.8 && roof.xs[k]! > 12 && roof.xs[k]! < 28);
   assert.ok(ridge.length > 3 && ridge.every((y) => y > 14), JSON.stringify(ridge));
   assert.ok(roof.ys.every((y) => y >= 12 && y <= 15));
+});
+
+test("su una pianta ruotata i punti del tetto corrono lungo i lati, e la mediana toglie un camino senza toccare la falda", () => {
+  // A 40 x 12 rectangle turned by 30 degrees, its ridge along the long side.
+  const t = Math.PI / 6;
+  const at = (u: number, v: number) => [50 + u * Math.cos(t) - v * Math.sin(t), 50 + u * Math.sin(t) + v * Math.cos(t)];
+  const ring = [...at(-20, -6), ...at(20, -6), ...at(20, 6), ...at(-20, 6)];
+  const dir = mainDirection(ring);
+  // Along the sides, up to a right angle.
+  assert.ok(Math.abs(Math.sin(2 * (Math.atan2(dir.sin, dir.cos) - t))) < 1e-6);
+  const cols = 100;
+  const heights = new Float32Array(cols * cols);
+  for (let j = 0; j < cols; j++) {
+    for (let i = 0; i < cols; i++) {
+      const v = -(i - 50) * Math.sin(t) + (j - 50) * Math.cos(t);
+      heights[j * cols + i] = 10 + 3 * Math.max(0, 1 - Math.abs(v) / 6);
+    }
+  }
+  heights[48 * cols + 52] = 16; // a chimney
+  const grid = { x0: 0, z0: 0, cell: 1, cols, rows: cols, heights };
+  const roof = surveyedRoof([ring], grid, 10, 13);
+  // Inner points sit in rows parallel to the ridge: few distinct distances across it.
+  const across = new Set(roof.xs.map((x, k) => Math.round((-(x - 50) * Math.sin(t) + (roof.zs[k]! - 50) * Math.cos(t)) * 10)).filter((_, k) => roof.ys[k]! > 10.01));
+  assert.ok(across.size <= 8, `${across.size} file`);
+  const smooth = smoothRoof(grid);
+  assert.ok(smooth.heights[48 * cols + 52]! < 13.1, `camino ${smooth.heights[48 * cols + 52]}`);
+  let worst = 0;
+  for (let j = 30; j < 70; j++) for (let i = 30; i < 70; i++) if (Math.abs(i - 52) > 1 || Math.abs(j - 48) > 1) worst = Math.max(worst, Math.abs(smooth.heights[j * cols + i]! - heights[j * cols + i]!));
+  assert.ok(worst < 0.5, `falda spostata di ${worst}`);
 });
 
 test("sotto la chioma di un albero 3D il suolo è ricostruito dai dintorni", () => {

@@ -2,7 +2,7 @@ import { api, type LidarOffer } from "../core/api.ts";
 import type { BenchReport, LidarReport } from "../core/types.ts";
 import { castShadows, fitSunAltitude, maskScore, resampleMask, type SurfaceGrid } from "../vision/bench.ts";
 import { leanFromSurface, type Lean } from "../vision/lean.ts";
-import { distanceToRings, insideRings, nearRectangle, roofSurfaceAt, STEEP_REACH, steepShape, type RoofGrid } from "../core/roofs.ts";
+import { distanceToRings, insideRings, nearRectangle, roofSurfaceAt, smoothRoof, STEEP_REACH, steepShape, type RoofGrid } from "../core/roofs.ts";
 import { familyId, SURVEY_PART, surveyedParts } from "../core/lidarParts.ts";
 
 const median = (values: number[]) => {
@@ -131,7 +131,7 @@ export async function applyLidar(engine: Engine, offer: LidarOffer): Promise<Lid
     }
     if (rises.length >= 12 && row.height - eave <= 5 && eave >= row.height * 0.6) {
       b.roofHeight = Math.max(0, row.height - eave);
-      b.roofGrid = roofPatch(b.rings[0]!, dsm, ground, cols, rows, cellX, cellZ, p.halfX, p.halfZ);
+      b.roofGrid = smoothRoof(roofPatch(b.rings[0]!, dsm, ground, cols, rows, cellX, cellZ, p.halfX, p.halfZ));
       b.roofShape = "rilevato";
       b.roofFrom = "LiDAR";
     }
@@ -262,6 +262,7 @@ function splitByParts(b: Building, dsm: ArrayLike<number>, ground: ArrayLike<num
   const parts = surveyedParts({ heights: patch.heights, inside, cols: patch.cols, rows: patch.rows, x0: patch.x0 - patch.cell / 2, z0: patch.z0 - patch.cell / 2, cell: patch.cell });
   if (!parts.length) return [];
   const ground0 = b.top - b.height;
+  const smooth = smoothRoof(patch);
   return parts.map((part, index) => {
     const coherent = part.height - part.median <= 5;
     const area = part.cells * patch.cell * patch.cell;
@@ -278,7 +279,7 @@ function splitByParts(b: Building, dsm: ArrayLike<number>, ground: ArrayLike<num
       roofShape: coherent ? "rilevato" : "flat",
       roofFrom: "LiDAR",
       roofHeight: coherent ? Math.max(0, part.height - part.median) : 0,
-      roofGrid: coherent ? patch : undefined,
+      roofGrid: coherent ? smooth : undefined,
       isPart: true,
       hidden: false,
       area,

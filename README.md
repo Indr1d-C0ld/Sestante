@@ -4,7 +4,7 @@
 ![Node 24 o più recente](https://img.shields.io/badge/node-24-339933?logo=node.js&logoColor=white)
 ![three.js](https://img.shields.io/badge/three.js-r187-black?logo=three.js)
 ![WebGL2](https://img.shields.io/badge/WebGL-2-990000?logo=webgl&logoColor=white)
-![Test](https://img.shields.io/badge/test-123-success)
+![Test](https://img.shields.io/badge/test-124-success)
 
 Scegli un riquadro di Terra. Sestante ne legge la ripresa satellitare, la ricostruisce in 3D e ti ci fa camminare dentro in prima persona, con la borsa di strumenti di un ricercatore sul campo e un registro che si scrive da solo.
 
@@ -68,7 +68,7 @@ Poi apri http://localhost:4173. Senza chiavi funziona già tutto ciò che usa fo
 | --- | --- |
 | `npm start` | Server di produzione sulla porta 4173, con la build in `dist/` |
 | `npm run dev` | Sviluppo con Vite e ricarica a caldo (usa anche la porta successiva) |
-| `npm test` | I 123 test, su scene sintetiche di cui si conosce la verità |
+| `npm test` | I 124 test, su scene sintetiche di cui si conosce la verità |
 | `npm run typecheck` | Controllo dei tipi |
 
 Variabili d'ambiente: `PORT` per la porta, `SESTANTE_DATA` per la cartella dei dati (predefinita `data/` nel progetto). Il server ascolta solo su `127.0.0.1`.
@@ -463,6 +463,8 @@ Secondo il rilievo laser, sette edifici su dieci hanno un tetto con più di 1,5 
 - **sedimi misti.** Un sedime che contiene un corpo basso e uno alto, o una gru, diventava una roccia.
 
 La scheda dell'edificio dice "come rilevata". Questi tetti non entrano nella misura qui sotto, perché confrontarli col rilievo da cui vengono non direbbe nulla.
+
+I primi tetti rilevati, visti dal drone, sembravano rocce. Disegnati in rilievo ombreggiato senza la foto, mostravano la causa: i punti stavano su una griglia allineata a nord e a est, mentre colmi e rotture delle mansarde corrono lungo le facciate, e ogni colmo obliquo diventava un dente di sega. Ora la griglia segue la direzione principale dei lati del sedime (la media delle direzioni dei lati, pesata sulla lunghezza, a meno di un angolo retto), e il rilievo passa prima per una mediana su 3 × 3 celle che toglie camini, sfiati e rumore senza spostare falde e colmi. Su una zona di Parigi la distanza media dal rilievo resta 2,25 m e le piccole curvature calano di un quarto; a Lione da 2,61 a 2,62 m. Sono state provate anche una media su 5 × 5, che arrotondava i tetti come cuscini, e la ricostruzione per falde piane, regioni con la stessa pendenza sostituite dal loro piano, che non faceva meglio della mediana. La screziatura che resta è la foto: le ombre dei camini sono quelle che il satellite ha visto.
 
 **I sedimi misti si dividono nelle parti che il laser vede.** Per la mappa un isolato con un fronte di sei piani, una bottega di un piano sul retro e un cortile è spesso un solo edificio; per il laser sono tre cose. Dentro un sedime il cui tetto non è coerente, le celle vicine stanno nella stessa parte quando la superficie fra l'una e l'altra cambia di 1,6 m al massimo, come lungo una falda, e in parti diverse dove salta, come a un muro. Le parti più piccole di 12 m² si uniscono alla vicina con cui confinano di più, così un camino non diventa un'ala. Le parti più basse di 2,5 m sono corti e passaggi e restano aperte. Ogni parte diventa un corpo con il proprio contorno (i bordi delle celle, semplificati), la propria altezza e il tetto rilevato se è coerente; altrimenti ha un tetto piatto alla sua quota mediana. Il colore resta quello dell'edificio, e la scheda dice che è una parte vista dal laser. Un sedime che darebbe una parte sola resta com'era, perché il contorno della mappa è più preciso di quello del rilievo.
 

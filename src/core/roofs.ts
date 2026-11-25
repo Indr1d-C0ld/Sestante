@@ -185,6 +185,31 @@ export function delaunay(xs: Float64Array, zs: Float64Array) {
 /** A surveyed roof patch: heights above the building's ground on a regular grid, x and z of its first cell's centre. */
 export type RoofGrid = { x0: number; z0: number; cell: number; cols: number; rows: number; heights: Float32Array };
 
+/**
+ * A roof patch without its smallest bumps: each cell takes the median of its 3 x 3 neighbourhood. Chimneys, vents and
+ * laser noise go; slopes, ridges and mansard breaks, which are straight, stay where they are.
+ */
+export function smoothRoof(grid: RoofGrid): RoofGrid {
+  const { cols, rows, heights } = grid;
+  const out = new Float32Array(heights.length);
+  const near: number[] = [];
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < cols; i++) {
+      const own = heights[j * cols + i]!;
+      near.length = 0;
+      for (let b = Math.max(0, j - 1); b <= Math.min(rows - 1, j + 1); b++) {
+        for (let a = Math.max(0, i - 1); a <= Math.min(cols - 1, i + 1); a++) {
+          const h = heights[b * cols + a]!;
+          if (Number.isFinite(h)) near.push(h);
+        }
+      }
+      near.sort((x, y) => x - y);
+      out[j * cols + i] = Number.isFinite(own) && near.length ? near[near.length >> 1]! : own;
+    }
+  }
+  return { ...grid, heights: out };
+}
+
 /** Bilinear reading of a roof patch; NaN outside it or where the survey has no value. */
 export function roofGridAt(grid: RoofGrid, x: number, z: number) {
   const gx = (x - grid.x0) / grid.cell;
@@ -200,6 +225,24 @@ export function roofGridAt(grid: RoofGrid, x: number, z: number) {
   const fz = gz - j;
   const h = (a: number, b: number) => grid.heights[b * grid.cols + a]!;
   return h(i, j) * (1 - fx) * (1 - fz) + h(i + 1, j) * fx * (1 - fz) + h(i, j + 1) * (1 - fx) * fz + h(i + 1, j + 1) * fx * fz;
+}
+
+/** The outline's main direction, modulo a right angle: edge directions weighted by length, averaged on 4θ. */
+export function mainDirection(ring: number[]) {
+  let c = 0;
+  let s = 0;
+  const n = ring.length / 2;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const dx = ring[i * 2]! - ring[j * 2]!;
+    const dz = ring[i * 2 + 1]! - ring[j * 2 + 1]!;
+    const len = Math.hypot(dx, dz);
+    if (len === 0) continue;
+    const a = Math.atan2(dz, dx) * 4;
+    c += len * Math.cos(a);
+    s += len * Math.sin(a);
+  }
+  const angle = Math.atan2(s, c) / 4;
+  return { cos: Math.cos(angle), sin: Math.sin(angle) };
 }
 
 /**
@@ -226,19 +269,26 @@ export function surveyedRoof(rings: number[][], grid: RoofGrid, eave: number, to
       }
     }
   }
+  // The inner points on a grid along the outline's own directions: ridges and mansard breaks run parallel to the
+  // facades, and a grid at an angle to them cut every ridge into a saw.
+  const { cos, sin } = mainDirection(rings[0]!);
+  let minU = Infinity;
+  let maxU = -Infinity;
+  let minV = Infinity;
+  let maxV = -Infinity;
   const outer = rings[0]!;
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minZ = Infinity;
-  let maxZ = -Infinity;
   for (let i = 0; i < outer.length; i += 2) {
-    minX = Math.min(minX, outer[i]!);
-    maxX = Math.max(maxX, outer[i]!);
-    minZ = Math.min(minZ, outer[i + 1]!);
-    maxZ = Math.max(maxZ, outer[i + 1]!);
+    const u = outer[i]! * cos + outer[i + 1]! * sin;
+    const v = -outer[i]! * sin + outer[i + 1]! * cos;
+    minU = Math.min(minU, u);
+    maxU = Math.max(maxU, u);
+    minV = Math.min(minV, v);
+    maxV = Math.max(maxV, v);
   }
-  for (let z = minZ + spacing / 2; z < maxZ; z += spacing) {
-    for (let x = minX + spacing / 2; x < maxX; x += spacing) {
+  for (let v = minV + spacing / 2; v < maxV; v += spacing) {
+    for (let u = minU + spacing / 2; u < maxU; u += spacing) {
+      const x = u * cos - v * sin;
+      const z = u * sin + v * cos;
       if (!insideRings(x, z, rings) || distanceToRings(x, z, rings) < spacing * 0.35) continue;
       const h = roofGridAt(grid, x, z);
       xs.push(x);
