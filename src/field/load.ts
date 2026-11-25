@@ -5,7 +5,7 @@ import type { FieldSpec, PlateRef } from "../core/types.ts";
 import type { AnalysisInput, AnalysisResult, Footprint, TreeHeightOrigin } from "../vision/analyze.ts";
 import type { WorkerReply } from "../vision/worker.ts";
 import { aboveLevels, STOREY_MIN, storeyHeight } from "../core/storeys.ts";
-import { nearRectangle, presumedRise, presumePitched } from "../core/roofs.ts";
+import { nearRectangle, presumedRise, presumePitched, type RoofGrid } from "../core/roofs.ts";
 
 type LatLon = [number, number];
 type OsmFeature = { id: string; tags: Record<string, string>; rings?: LatLon[][]; line?: LatLon[]; at?: LatLon };
@@ -41,6 +41,8 @@ export type Building = {
   roofShape: string;
   /** Where the roof's shape comes from: the map, the plate's terracotta, a presumption from size, the laser, or nowhere. */
   roofFrom?: "mappa" | "colore" | "presunta" | "LiDAR" | "nessuna";
+  /** The surveyed roof, heights above the ground, when the laser survey has been applied to this building. */
+  roofGrid?: RoofGrid;
   roofHeight: number;
   roofTone: [number, number, number];
   isPart: boolean;

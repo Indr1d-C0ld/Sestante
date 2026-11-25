@@ -47,7 +47,7 @@ function Icon({ path }: { path: string }) {
   );
 }
 
-const ROOF_NAMES: Record<string, string> = { flat: "piana", hipped: "a padiglione", gabled: "a capanna", mansard: "a mansarda", dome: "a cupola", pyramidal: "a piramide", skillion: "a una falda", gambrel: "a mansarda olandese", "half-hipped": "a padiglione spezzato", cone: "a cono", onion: "a cipolla", round: "a volta", saltbox: "a falde asimmetriche" };
+const ROOF_NAMES: Record<string, string> = { rilevato: "come rilevata", flat: "piana", hipped: "a padiglione", gabled: "a capanna", mansard: "a mansarda", dome: "a cupola", pyramidal: "a piramide", skillion: "a una falda", gambrel: "a mansarda olandese", "half-hipped": "a padiglione spezzato", cone: "a cono", onion: "a cipolla", round: "a volta", saltbox: "a falde asimmetriche" };
 
 export function FieldScreen({ expedition: initial, canvas, findings, study, onExit }: Props) {
   const glRef = useRef<HTMLCanvasElement>(null);

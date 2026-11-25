@@ -4,7 +4,7 @@
 ![Node 24 o più recente](https://img.shields.io/badge/node-24-339933?logo=node.js&logoColor=white)
 ![three.js](https://img.shields.io/badge/three.js-r187-black?logo=three.js)
 ![WebGL2](https://img.shields.io/badge/WebGL-2-990000?logo=webgl&logoColor=white)
-![Test](https://img.shields.io/badge/test-120-success)
+![Test](https://img.shields.io/badge/test-121-success)
 
 Scegli un riquadro di Terra. Sestante ne legge la ripresa satellitare, la ricostruisce in 3D e ti ci fa camminare dentro in prima persona, con la borsa di strumenti di un ricercatore sul campo e un registro che si scrive da solo.
 
@@ -68,7 +68,7 @@ Poi apri http://localhost:4173. Senza chiavi funziona già tutto ciò che usa fo
 | --- | --- |
 | `npm start` | Server di produzione sulla porta 4173, con la build in `dist/` |
 | `npm run dev` | Sviluppo con Vite e ricarica a caldo (usa anche la porta successiva) |
-| `npm test` | I 120 test, su scene sintetiche di cui si conosce la verità |
+| `npm test` | I 121 test, su scene sintetiche di cui si conosce la verità |
 | `npm run typecheck` | Controllo dei tipi |
 
 Variabili d'ambiente: `PORT` per la porta, `SESTANTE_DATA` per la cartella dei dati (predefinita `data/` nel progetto). Il server ascolta solo su `127.0.0.1`.
@@ -454,6 +454,12 @@ Secondo il rilievo laser, sette edifici su dieci hanno un tetto con più di 1,5 
 - **dove la mappa tace**, un edificio fra 8 m d'altezza e 1.000 m² di pianta, se la pianta è quasi rettangolare, riceve un tetto a padiglione presunto, alto un quarto della sua larghezza (fra 1,4 m e il 45% dell'altezza). È lo stesso tetto che già si dava alle tegole color terracotta, ora limitato anch'esso alle piante rettangolari;
 - **sulle piante complesse il tetto resta piatto.** Un tetto che sale da ogni bordo è stato provato: era il più vicino al rilievo, ma sugli isolati irregolari si increspava come un telo. Per la stessa ragione mansarde e simili, su piante complesse, si disegnano piane alla quota del colmo;
 - **la scheda dell'edificio dice da dove viene la forma:** mappa, colore della ripresa, dimensioni, oppure nessuna.
+
+**Dove c'è un rilievo laser**, il pulsante delle altezze dal laser, nella scheda LiDAR, dà agli edifici anche il tetto rilevato. La gronda è alla quota mediana del tetto; sopra, il tetto segue il rilievo, ricostruito come una superficie di triangoli su punti ogni 1,5 m dentro il sedime e lungo i suoi bordi. Vale solo per i tetti coerenti, con il colmo entro 5 m dalla mediana e la mediana almeno al 60% del colmo: a Parigi 390 edifici su 494. Gli altri restano come erano, e ci sono due ragioni:
+- **gronda bassa.** Con la gronda al 15° percentile i muri scendevano fino a cortili non mappati e corpi bassi dentro il sedime, e i tetti pendevano come tende;
+- **sedimi misti.** Un sedime che contiene un corpo basso e uno alto, o una gru, diventava una roccia.
+
+La scheda dell'edificio dice "come rilevata". Questi tetti non entrano nella misura qui sotto, perché confrontarli col rilievo da cui vengono non direbbe nulla.
 
 Il banco di prova misura ora la distanza media fra la superficie dei tetti e il rilievo, cella per cella, e la confronta con tetti piatti alla stessa altezza:
 

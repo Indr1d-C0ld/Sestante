@@ -3,7 +3,7 @@ import type { CSM } from "three/addons/csm/CSM.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Building } from "../field/load.ts";
 import { PLATE_GLSL, PROJECT_GLSL, PROV_GLSL, shade } from "./shading.ts";
-import { distanceToRings, nearRectangle, STEEP_REACH, steepShape } from "../core/roofs.ts";
+import { distanceToRings, nearRectangle, STEEP_REACH, steepShape, surveyedRoof } from "../core/roofs.ts";
 
 const NAMED: Record<string, number> = {
   white: 0xece7dc, black: 0x2c2c2c, grey: 0x8f8f8c, gray: 0x8f8f8c, red: 0xa0463a, brown: 0x7a5a42, beige: 0xcbb99a, yellow: 0xd7bd6c,
@@ -564,7 +564,12 @@ export function buildBuildings(buildings: Building[], csm: CSM | null, cell = 26
     }
     const shape = building.roofShape;
     const round = compact(outer) > 0.72;
-    if (flattened) {
+    if (building.roofGrid) {
+      // The surveyed roof: its shape and heights from the laser, edges at the eave where the walls end.
+      const roof = surveyedRoof(rings, building.roofGrid, eave - groundRef, yTop - groundRef);
+      const at = (k: number) => [roof.xs[k]!, groundRef + roof.ys[k]!, roof.zs[k]!];
+      for (const [a, b, c] of roof.tris) addRoofTri(bucket.roofs, at(a!), at(c!), at(b!), color, seed);
+    } else if (flattened) {
       addFlatRoof(bucket.roofs, rings, eave, color, seed);
     } else if (steepShape(shape)) {
       addSurfaceRoof(bucket.roofs, rings, eave, building.roofHeight, color, seed, 2.5, STEEP_REACH);

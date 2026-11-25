@@ -2,7 +2,7 @@ import { api, type LidarOffer } from "../core/api.ts";
 import type { BenchReport, LidarReport } from "../core/types.ts";
 import { castShadows, fitSunAltitude, maskScore, resampleMask, type SurfaceGrid } from "../vision/bench.ts";
 import { leanFromSurface, type Lean } from "../vision/lean.ts";
-import { distanceToRings, nearRectangle, roofSurfaceAt, STEEP_REACH, steepShape } from "../core/roofs.ts";
+import { distanceToRings, nearRectangle, roofSurfaceAt, STEEP_REACH, steepShape, type RoofGrid } from "../core/roofs.ts";
 
 const median = (values: number[]) => {
   const s = [...values].sort((a, b) => a - b);
@@ -90,7 +90,7 @@ export async function applyLidar(engine: Engine, offer: LidarOffer): Promise<Lid
   const tallest: LidarReport["tallest"] = [];
   let changed = 0;
   let seen = 0;
-  for (const { b, row } of standingBuildings(engine, dsm, ground, cols, rows)) {
+  for (const { b, row, cells } of standingBuildings(engine, dsm, ground, cols, rows)) {
     if (row.coverage < 0.5 || row.height < 2) continue;
     seen++;
     differences.set(b.source, [...(differences.get(b.source) ?? []), b.height - row.height]);
@@ -101,6 +101,18 @@ export async function applyLidar(engine: Engine, offer: LidarOffer): Promise<Lid
     b.top = base + row.height;
     b.source = "LiDAR";
     b.confidence = 0.95;
+    // The roof too: the eave at the roof's median height, the surface above it as surveyed. A lower eave pulled the walls
+    // down to unmapped courtyards and low annexes inside the outline, and the roofs hung over them like curtains.
+    const rises = cells.map((k) => dsm[k]! - ground[k]!).filter((v) => Number.isFinite(v) && v > 1).sort((x, y) => x - y);
+    const eave = rises[Math.floor(rises.length * 0.5)] ?? 0;
+    // Only coherent roofs: ridge within 5 m of the median and the median at least 60% of the ridge. A footprint holding
+    // a low annex and a tall wing, or a crane, turned into a rock; those keep the shape they had.
+    if (rises.length >= 12 && row.height - eave <= 5 && eave >= row.height * 0.6) {
+      b.roofHeight = Math.max(0, row.height - eave);
+      b.roofGrid = roofPatch(b.rings[0]!, dsm, ground, cols, rows, cellX, cellZ, p.halfX, p.halfZ);
+      b.roofShape = "rilevato";
+      b.roofFrom = "LiDAR";
+    }
     if (b.levels) b.levels = Math.max(1, Math.round((row.height - b.roofHeight) / 3.2));
     changed++;
   }
@@ -138,6 +150,36 @@ function clearOf(built: Uint8Array, cols: number, rows: number, reach: number) {
   }
   for (let k = 0; k < near.length; k++) near[k] = near[k] ? 0 : 1;
   return near;
+}
+
+/** The survey around one footprint, as heights above the ground, one cell beyond its bounds. */
+function roofPatch(ring: number[], dsm: ArrayLike<number>, ground: ArrayLike<number>, cols: number, rows: number, cellX: number, cellZ: number, halfX: number, halfZ: number): RoofGrid {
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let z0 = Infinity;
+  let z1 = -Infinity;
+  for (let i = 0; i < ring.length; i += 2) {
+    x0 = Math.min(x0, ring[i]!);
+    x1 = Math.max(x1, ring[i]!);
+    z0 = Math.min(z0, ring[i + 1]!);
+    z1 = Math.max(z1, ring[i + 1]!);
+  }
+  const i0 = Math.max(0, Math.floor((x0 + halfX) / cellX) - 1);
+  const i1 = Math.min(cols - 1, Math.ceil((x1 + halfX) / cellX) + 1);
+  const j0 = Math.max(0, Math.floor((z0 + halfZ) / cellZ) - 1);
+  const j1 = Math.min(rows - 1, Math.ceil((z1 + halfZ) / cellZ) + 1);
+  const w = i1 - i0 + 1;
+  const h = j1 - j0 + 1;
+  const heights = new Float32Array(w * h);
+  for (let j = 0; j < h; j++) {
+    for (let i = 0; i < w; i++) {
+      const k = (j0 + j) * cols + i0 + i;
+      const v = dsm[k]! - ground[k]!;
+      heights[j * w + i] = Number.isFinite(v) ? v : NaN;
+    }
+  }
+  // Cells are square enough here: the patch keeps the x spacing.
+  return { x0: (i0 + 0.5) * cellX - halfX, z0: (j0 + 0.5) * cellZ - halfZ, cell: cellX, cols: w, rows: h, heights };
 }
 
 /** Every visible building with what the survey saw inside its outline, and the cells it covers. */

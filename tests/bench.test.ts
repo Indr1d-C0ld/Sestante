@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { castShadows, fitSunAltitude, maskScore, resampleMask, type SurfaceGrid } from "../src/vision/bench.ts";
 import { describeLean, leanFrom, leanFromSurface } from "../src/vision/lean.ts";
-import { distanceToRings, nearRectangle, presumePitched, roofSurfaceAt } from "../src/core/roofs.ts";
+import { distanceToRings, insideRings, nearRectangle, presumePitched, roofSurfaceAt, surveyedRoof } from "../src/core/roofs.ts";
 import { aboveLevels, storeyHeight } from "../src/core/storeys.ts";
 import { analyzePlate, asphaltShadowLevel, fillRing, greenCast, leafOn, shadowHeights, type Footprint } from "../src/vision/analyze.ts";
 
@@ -246,4 +246,23 @@ test("un tetto che sale dai bordi resta dentro la pianta e arriva al colmo nel p
   assert.equal(presumePitched(6, 300, false, false), false);
   assert.equal(presumePitched(12, 3000, false, false), false);
   assert.equal(presumePitched(12, 300, true, false), false);
+});
+
+test("il tetto dal rilievo sta dentro la pianta, ne copre l'area e prende le quote del rilievo", () => {
+  // An L with a ridge running along x at z = 5 in the first arm.
+  const L = [[0, 0, 30, 0, 30, 10, 10, 10, 10, 30, 0, 30]];
+  const cols = 32;
+  const heights = new Float32Array(cols * cols);
+  for (let j = 0; j < cols; j++) for (let i = 0; i < cols; i++) heights[j * cols + i] = 12 + 3 * Math.max(0, 1 - Math.abs(j - 5) / 5);
+  const grid = { x0: 0, z0: 0, cell: 1, cols, rows: cols, heights };
+  const roof = surveyedRoof(L, grid, 12, 15);
+  let area = 0;
+  for (const [a, b, c] of roof.tris) {
+    area += Math.abs((roof.xs[b]! - roof.xs[a]!) * (roof.zs[c]! - roof.zs[a]!) - (roof.xs[c]! - roof.xs[a]!) * (roof.zs[b]! - roof.zs[a]!)) / 2;
+    assert.ok(insideRings((roof.xs[a]! + roof.xs[b]! + roof.xs[c]!) / 3, (roof.zs[a]! + roof.zs[b]! + roof.zs[c]!) / 3, L));
+  }
+  assert.ok(Math.abs(area - 500) < 15, `area ${area}`);
+  const ridge = roof.ys.filter((_, k) => Math.abs(roof.zs[k]! - 5) < 0.8 && roof.xs[k]! > 12 && roof.xs[k]! < 28);
+  assert.ok(ridge.length > 3 && ridge.every((y) => y > 14), JSON.stringify(ridge));
+  assert.ok(roof.ys.every((y) => y >= 12 && y <= 15));
 });
