@@ -1,3 +1,4 @@
+import { landcover, landcoverStatus } from "./landcover.ts";
 import { lidarCoverage, lidarGrid } from "./lidar.ts";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
@@ -323,6 +324,19 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
     return true;
   }
   if (path === "/api/earth/lidar/coverage") return json(res, 200, await lidarCoverage(earthBox())), true;
+  if (path === "/api/landcover/status") return json(res, 200, landcoverStatus()), true;
+  if (path === "/api/landcover" && req.method === "POST") {
+    const width = num("width");
+    const height = num("height");
+    if (!Number.isInteger(width) || !Number.isInteger(height) || width < 16 || height < 16 || width * height > 4096 * 4096) return json(res, 400, { error: "misure invalide" }), true;
+    const raw = await body(req);
+    if (raw.length !== width * height * 4) return json(res, 400, { error: "la lastra non ha le misure dichiarate" }), true;
+    const out = await landcover(new Uint8Array(raw.buffer, raw.byteOffset, raw.length), width, height).catch((error: Error) => error);
+    if (out instanceof Error) return json(res, 503, { error: out.message }), true;
+    res.writeHead(200, { "Content-Type": "application/octet-stream", "Cache-Control": "no-store", "X-Provider": out.provider, "X-Ms": String(out.ms) });
+    res.end(Buffer.concat([Buffer.from(out.classes.buffer), Buffer.from(out.confidence.buffer)]));
+    return true;
+  }
   if (path === "/api/earth/lidar") {
     const cols = Math.max(2, Math.min(4096, num("cols") || 256));
     const rows = Math.max(2, Math.min(4096, num("rows") || 256));

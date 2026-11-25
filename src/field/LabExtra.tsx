@@ -644,6 +644,14 @@ function BenchTable({ bench }: { bench: BenchReport }) {
             <td>{pct(bench.canopy.recall)}</td>
             <td>{pct(bench.canopy.iou)}</td>
           </tr>
+          {bench.canopyClear && (
+            <tr>
+              <td>Chiome oltre 3 m, lontano dagli edifici</td>
+              <td>{pct(bench.canopyClear.precision)}</td>
+              <td>{pct(bench.canopyClear.recall)}</td>
+              <td>{pct(bench.canopyClear.iou)}</td>
+            </tr>
+          )}
         </tbody>
       </table>
       <p className={sunOff ? "small warn" : "small"}>

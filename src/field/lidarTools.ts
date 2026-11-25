@@ -110,6 +110,29 @@ export async function applyLidar(engine: Engine, offer: LidarOffer): Promise<Lid
   };
 }
 
+/**
+ * Cells at least `reach` cells from any mapped building. Next to a wall the survey's tall cells are often the building
+ * itself (eaves, a misplaced outline, the plate's lean): only away from them is "tall" mostly trees.
+ */
+function clearOf(built: Uint8Array, cols: number, rows: number, reach: number) {
+  const near = new Uint8Array(built.length);
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < cols; i++) {
+      if (!built[j * cols + i]) continue;
+      for (let dj = -reach; dj <= reach; dj++) {
+        const jj = j + dj;
+        if (jj < 0 || jj >= rows) continue;
+        for (let di = -reach; di <= reach; di++) {
+          const ii = i + di;
+          if (ii >= 0 && ii < cols) near[jj * cols + ii] = 1;
+        }
+      }
+    }
+  }
+  for (let k = 0; k < near.length; k++) near[k] = near[k] ? 0 : 1;
+  return near;
+}
+
 /** Every visible building with what the survey saw inside its outline, and the cells it covers. */
 function standingBuildings(engine: Engine, dsm: ArrayLike<number>, ground: ArrayLike<number>, cols: number, rows: number) {
   const p = engine.data.projection;
@@ -213,6 +236,7 @@ export async function benchmark(engine: Engine, offer: LidarOffer): Promise<Benc
     shadowFloors: floors ? { n: floors, held: floorsHeld } : null,
     shadow,
     canopy: maskScore(canopyFound, tall, unbuilt),
+    canopyClear: maskScore(canopyFound, tall, clearOf(built, cols, rows, Math.max(1, Math.round(4 / step)))),
     sun: { used: a.sun.altitude, method: a.sun.method, best: fit.altitude, iouUsed: shadow.iou, iouBest: fit.iou, reliable: !a.shadowsWeak && !fit.atEdge },
   };
 }

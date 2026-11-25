@@ -21,6 +21,8 @@ export type AnalysisInput = {
   water: number[][];
   osmTrees: { x: number; y: number; tags: Record<string, string> }[];
   register?: boolean;
+  /** Land cover from a neural network on the same grid, one FLAIR class per pixel (see server/landcover.ts). Optional. */
+  landcover?: { classes: Uint8Array; provider: string; ms: number };
   /** Elevation resampled on the same grid, downscaled by `elevationStep`: water is flat, and the DEM knows it. */
   elevation?: Float32Array;
   elevationStep?: number;
@@ -55,6 +57,8 @@ export type AnalysisResult = {
   mpp: number;
   sun: SunReading;
   registration: { dx: number; dy: number; score: number; applied: boolean };
+  /** Which network classified the ground, if any, and on what. */
+  landcover?: { model: string; provider: string; ms: number; canopyFromNetwork: number };
   /** Lit and shaded asphalt look alike on this plate: shadow lengths, and the heights read from them, are weak. */
   shadowsWeak?: boolean;
   heights: Record<string, HeightReading>;
@@ -71,6 +75,19 @@ export type AnalysisResult = {
 };
 
 type Grid = { w: number; h: number };
+
+/**
+ * Whether broadleaf trees are in leaf on that date: May to September north of the tropics, November to March south of
+ * them. Unknown dates and the tropics count as not known to be in leaf, the cautious answer.
+ */
+export function leafOn(date: string | null | undefined, lat: number) {
+  const month = date ? Number(/^\d{4}-(\d{2})/.exec(date)?.[1]) : NaN;
+  if (!Number.isFinite(month) || Math.abs(lat) < 23.5) return false;
+  return lat > 0 ? month >= 5 && month <= 9 : month >= 11 || month <= 3;
+}
+
+/** FLAIR class indices as the ONNX model returns them: FLAIR's own numbering minus one. */
+const FLAIR = { building: 0, impervious: 2, water: 4, coniferous: 5, deciduous: 6, brushwood: 7 } as const;
 
 function integral(src: Float32Array, { w, h }: Grid) {
   const out = new Float64Array((w + 1) * (h + 1));
@@ -807,6 +824,33 @@ export function analyzePlate(input: AnalysisInput): AnalysisResult {
       }
     }
   }
+  // With the network: its trees are added, and the rules' canopy is dropped where it sees a building or water. Where it
+  // sees asphalt the canopy goes too, but only on a plate in leaf: a bare winter crown shows the street under it, and the
+  // network, trained from April to November, calls it street. Against the LiDAR, away from buildings, this did not lose to
+  // the rules alone on any of eleven boxes; the season rule was chosen after seeing them (see the README).
+  let canopyFromNetwork = 0;
+  const cover = input.landcover?.classes;
+  const inLeaf = leafOn(input.captureDate, lat);
+  if (cover && cover.length === n) {
+    for (let k = 0; k < n; k++) {
+      if (built[k] || water[k]) continue;
+      const c = cover[k]!;
+      const tree = c === FLAIR.coniferous || c === FLAIR.deciduous || c === FLAIR.brushwood;
+      const notTree = c === FLAIR.building || c === FLAIR.water || (inLeaf && c === FLAIR.impervious);
+      if (tree && !canopyMask[k]) {
+        canopyMask[k] = 1;
+        canopyCount++;
+        canopyFromNetwork++;
+        if (lawnMask[k]) {
+          lawnMask[k] = 0;
+          lawnCount--;
+        }
+      } else if (notTree && canopyMask[k]) {
+        canopyMask[k] = 0;
+        canopyCount--;
+      }
+    }
+  }
 
   const trees = detectTrees(rgba, grid, mpp, canopyMask, shadow, built, shadowAz, tan, input.osmTrees);
   const masses = input.footprints.length < 8000 ? detectMasses(rgba, grid, mpp, shadow, built, veg, road, water, lum, shadowAz, tan) : [];
@@ -869,6 +913,7 @@ export function analyzePlate(input: AnalysisInput): AnalysisResult {
     sun,
     registration: { ...registration, dx: registration.dx * mpp, dy: registration.dy * mpp },
     shadowsWeak,
+    landcover: input.landcover ? { model: "FLAIR-INC RGB 15 classi (IGN)", provider: input.landcover.provider, ms: input.landcover.ms, canopyFromNetwork: canopyFromNetwork / n } : undefined,
     heights,
     roofTones,
     trees,

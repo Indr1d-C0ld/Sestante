@@ -236,7 +236,7 @@ export function FieldScreen({ expedition: initial, canvas, findings, study, onEx
         addNote(
           "sistema",
           "Lettura della lastra",
-          `${sunLine}${cross}${r.sun.dateAltitude != null ? ` La data dichiarata darebbe ${deg(r.sun.dateAltitude)}°: gli edifici di altezza nota la smentiscono, quindi la data dello scatto è dubbia.` : ""}${r.shadowsWeak ? " Su questa ripresa l'asfalto al sole e quello in ombra hanno la stessa luminosità: le altezze lette dalle ombre contano poco e valgono di più quelle del quartiere." : ""}\n${data.log.join(" ")}`,
+          `${sunLine}${cross}${r.sun.dateAltitude != null ? ` La data dichiarata darebbe ${deg(r.sun.dateAltitude)}°: gli edifici di altezza nota la smentiscono, quindi la data dello scatto è dubbia.` : ""}${r.shadowsWeak ? " Su questa ripresa l'asfalto al sole e quello in ombra hanno la stessa luminosità: le altezze lette dalle ombre contano poco e valgono di più quelle del quartiere." : ""}${r.landcover ? ` Chiome riviste con la rete FLAIR dell'IGN (${r.landcover.provider === "webgpu" ? "scheda grafica" : "processore"}, ${(r.landcover.ms / 1000).toFixed(1)} s): addestrata su foto aeree francesi d'estate, fuori dalla Francia e in inverno vede meno alberi, e le regole proprie restano accanto.` : ""}\n${data.log.join(" ")}`,
           {
             values: {
               edifici: String(data.buildings.filter((b) => !b.hidden).length),

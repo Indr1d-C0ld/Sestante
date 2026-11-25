@@ -4,7 +4,7 @@
 ![Node 24 o più recente](https://img.shields.io/badge/node-24-339933?logo=node.js&logoColor=white)
 ![three.js](https://img.shields.io/badge/three.js-r187-black?logo=three.js)
 ![WebGL2](https://img.shields.io/badge/WebGL-2-990000?logo=webgl&logoColor=white)
-![Test](https://img.shields.io/badge/test-114-success)
+![Test](https://img.shields.io/badge/test-116-success)
 
 Scegli un riquadro di Terra. Sestante ne legge la ripresa satellitare, la ricostruisce in 3D e ti ci fa camminare dentro in prima persona, con la borsa di strumenti di un ricercatore sul campo e un registro che si scrive da solo.
 
@@ -56,7 +56,7 @@ Sviluppato e provato su Debian 13 con una RTX 3060 e driver Nouveau, in Chromium
 
 ```bash
 git clone https://github.com/Indr1d-C0ld/Sestante.git
-cd sestante
+cd Sestante
 npm ci
 npm run build
 npm start
@@ -68,10 +68,19 @@ Poi apri http://localhost:4173. Senza chiavi funziona già tutto ciò che usa fo
 | --- | --- |
 | `npm start` | Server di produzione sulla porta 4173, con la build in `dist/` |
 | `npm run dev` | Sviluppo con Vite e ricarica a caldo (usa anche la porta successiva) |
-| `npm test` | I 101 test, su scene sintetiche di cui si conosce la verità |
+| `npm test` | I 116 test, su scene sintetiche di cui si conosce la verità |
 | `npm run typecheck` | Controllo dei tipi |
 
 Variabili d'ambiente: `PORT` per la porta, `SESTANTE_DATA` per la cartella dei dati (predefinita `data/` nel progetto). Il server ascolta solo su `127.0.0.1`.
+
+### Segmentazione con rete neurale, facoltativa
+
+Sestante può far leggere la ripresa anche a FLAIR-INC, una rete dell'IGN francese che distingue edifici, asfalto, terra, acqua, conifere, latifoglie, arbusti ed erba. Senza, tutto funziona con le regole proprie. Servono due cose:
+
+1. `onnxruntime-node`, che `npm ci` installa come dipendenza facoltativa (circa 570 MB). Usa la scheda grafica tramite WebGPU, se c'è, altrimenti il processore: circa 1 s per ripresa su una RTX 3060, 5 s sul processore.
+2. Il modello in `data/models/flair-rgb15.onnx` (98 MB). L'IGN lo pubblica in formato PyTorch: [tools/flair-to-onnx.py](tools/flair-to-onnx.py) lo converte una volta sola e contiene i comandi, che richiedono Python con PyTorch per il solo processore (circa 1 GB, fuori dal progetto). Il file dell'IGN viene aperto in modo che legga solo numeri, senza eseguire codice.
+
+`GET /api/landcover/status` dice se il modello è pronto e, se no, perché. La prima nota di ogni indagine dice se la rete è stata usata.
 
 ## Servizio di sistema su Debian
 
@@ -387,7 +396,7 @@ Ogni numero dichiara la sua fonte. La scheda di un edificio dice se l'altezza è
 | Sole dello scatto | Direzione delle ombre attorno agli edifici più data di acquisizione: ne esce l'istante dello scatto. Se almeno dieci edifici di altezza nota indicano un sole lontano più di 24° da quello della data, la data è messa in dubbio e vale il sole letto dagli edifici |
 | Vegetazione e ombre su lastre con dominante | Il verde in eccesso di strade e tetti mappati è la dominante della lastra e viene tolto prima di classificare. Sull'asfalto mappato decide la sua soglia, se sole e ombra formano due popolazioni; altrimenti la lastra è segnalata come "a ombre deboli" |
 | Altezze mancanti | Lunghezza dell'ombra × tangente del sole, tarata sugli edifici di altezza nota. Un'ombra fermata dal palazzo di fronte dà solo un'altezza minima, indicata come tale nella scheda dell'edificio. Con tutte le riprese lette: mediana pesata fra più date, con margine d'errore. Un'altezza scritta sulla mappa non viene mai sovrascritta |
-| Alberi | Chiome individuate sulla lastra, altezza dall'ombra, colore dal pixel; alberi OSM con specie dove esistono |
+| Alberi | Chiome individuate sulla lastra, altezza dall'ombra, colore dal pixel; alberi OSM con specie dove esistono. Con la rete FLAIR installata, le sue chiome si aggiungono a quelle delle regole, che vengono tolte dove la rete vede edifici o acqua e, sulle riprese in foglia, asfalto |
 | Edifici non mappati | Tetto compatto con la propria ombra, solo se nessun edificio mappato spiega quell'ombra |
 | Acqua | Poligoni OSM, più le aree grandi, lisce, piatte sul DEM e bluastre |
 | Passato | Ogni scatto Wayback rilegge suolo, tetti, alberi e corpi dedotti. Dopo aver letto le riprese, gli edifici risultati assenti in quello scatto spariscono |
@@ -472,6 +481,31 @@ Quattro riquadri di 600 m, celle di 1 m, novembre 2026:
 
 Il rilievo ha una data sua, diversa da quella della lastra: cantieri e alberi cresciuti abbassano i punteggi senza che la lettura sia sbagliata.
 
+### La rete FLAIR contro il LiDAR
+
+Undici riquadri: i quattro del banco di prova e i sette della verifica sui piani. Sovrapposizione delle chiome con ciò che il laser vede sopra i 3 m, prima solo fuori dai sedimi mappati e poi ad almeno 4 m da ogni edificio, dove ciò che è alto è quasi solo alberi. Il banco di prova mostra ora entrambe le misure.
+
+| Luogo | Ripresa | Fuori dai sedimi: regole, con la rete | Lontano dagli edifici: regole, con la rete |
+| --- | --- | --- | --- |
+| Amsterdam | gennaio | 13%, 19% | 14%, 22% |
+| Parigi | marzo | 22%, 21% | 27%, 29% |
+| Londra | agosto | 20%, 19% | 23%, 25% |
+| Zurigo | marzo | 20%, 20% | 22%, 23% |
+| Rotterdam | gennaio | 7%, 7% | 8%, 8% |
+| Anversa, centro | marzo | 20%, 18% | 23%, 24% |
+| Anversa, sud-est | marzo | 23%, 23% | 26%, 29% |
+| Lione, Presqu'île | agosto | 28%, 28% | 32%, 47% |
+| Lione, riva sinistra | agosto | 34%, 39% | 42%, 54% |
+| Manchester, centro | aprile | 13%, 10% | 15%, 16% |
+| Manchester, sud | aprile | 12%, 11% | 13%, 13% |
+
+- **Lontano dagli edifici la rete non fa mai peggio** e fa molto meglio d'estate: a Lione da 32 a 47% e da 42 a 54%. La precisione cresce quasi ovunque: ciò che chiama albero di solito lo è.
+- **Fuori dai sedimi** il guadagno di Amsterdam e Lione convive con perdite di 1-3 punti in sei riquadri. Vicino ai muri il laser conta come "alto" anche gronde, sedimi spostati e la pendenza della ripresa, e la rete toglie chiome che le regole avevano messo proprio lì. Non abbiamo modo di dire quale delle due misure abbia ragione caso per caso.
+- **Da sola la rete non basta.** È addestrata su foto aeree francesi da aprile a novembre e non vede gli alberi spogli: a Zurigo, a marzo, ne trovava il 5%. Per questo si aggiunge alle regole invece di sostituirle.
+- **La regola sulla stagione è stata scelta dopo aver visto questi numeri.** Togliendo le chiome dove la rete vede asfalto anche d'inverno, Rotterdam e Anversa perdevano 2-4 punti, perché un ramo spoglio lascia vedere la strada sotto. Togliendole mai, Lione perdeva il guadagno estivo. La regola ha una ragione fisica, ma è tarata su questi undici riquadri e non è stata provata altrove.
+- **Gli alberi individuati calano** da un terzo alla metà: la rete toglie chiome sulle strade in ombra. Se siano alberi falsi tolti o veri persi non è stato misurato.
+- **Ombre e altezze non cambiano:** la rete tocca solo chiome e prato.
+
 ## MapTilesDownloader
 
 La scheda **Scarichi** dell'Atlante riprende le funzioni di [MapTilesDownloader](https://github.com/AliFlux/MapTilesDownloader) (MIT), riscritte in Node: riquadro, fonte, zoom, MBTiles, cartella `z/x/y`, mosaico PNG con world file e fonti personali con `{x} {y} {z} {quad}`. Gli output finiscono in `data/downloads`, ognuno con un `provenienza.json`.
@@ -480,24 +514,25 @@ La vecchia fonte Carto ora richiede una chiave: è stata sostituita con Esri gri
 
 ## Fonti e licenze
 
-AHN, IGN LiDAR HD, Environment Agency, swisstopo, Digitaal Vlaanderen, Geobasis NRW, GUGiK e USGS 3DEP per i rilievi laser. Esri World Imagery e Wayback, Sentinel-2 cloudless di EOX, OpenStreetMap (ODbL), Mapzen Terrain Tiles su AWS, Open-Meteo, Nominatim, Copernicus Sentinel e Copernicus DEM (ESA), NASA GIBS, CMR, FIRMS, Harmony, GEDI e NASADEM (LP DAAC), Element 84 Earth Search, OpenWeather, Panoramax, Wikimedia Commons e Wikipedia (le foto e i testi mantengono autore e licenza, mostrati accanto). Ogni fonte mantiene i propri termini d'uso: sono pensate per un uso personale e di ricerca, non per la ridistribuzione.
+AHN, IGN LiDAR HD, Environment Agency, swisstopo, Digitaal Vlaanderen, Geobasis NRW, GUGiK e USGS 3DEP per i rilievi laser. Esri World Imagery e Wayback, Sentinel-2 cloudless di EOX, OpenStreetMap (ODbL), Mapzen Terrain Tiles su AWS, Open-Meteo, Nominatim, Copernicus Sentinel e Copernicus DEM (ESA), NASA GIBS, CMR, FIRMS, Harmony, GEDI e NASADEM (LP DAAC), Element 84 Earth Search, OpenWeather, Panoramax, Wikimedia Commons e Wikipedia (le foto e i testi mantengono autore e licenza, mostrati accanto). La rete di segmentazione facoltativa è [FLAIR-INC RGB 15 classi](https://huggingface.co/IGNF/FLAIR-INC_rgb_15cl_resnet34-unet) dell'IGN (Institut national de l'information géographique et forestière), con pesi sotto Licence Ouverte Etalab 2.0; non è inclusa nel repository. Ogni fonte mantiene i propri termini d'uso: sono pensate per un uso personale e di ricerca, non per la ridistribuzione.
 
 ## Struttura
 
 ```
-server/       proxy e cache tessere, Wayback, OSM, meteo, dati della Terra, NASA, chiavi, scarichi, salvataggi
+server/       proxy e cache tessere, Wayback, OSM, meteo, dati della Terra, NASA, chiavi, scarichi, salvataggi, rete di segmentazione
 src/core/     geodesia, sole e luna, archeoastronomia, rilievo, API, tipi
 src/vision/   fotolettura della lastra, lettura multi-data, banco delle ombre (codice puro) e filtri
 src/atlas/    Atlante, Studio, ripresa manuale
 src/field/    caricamento del campo, strumenti, laboratorio, indagine, fascicolo, vie, viaggio nel tempo, foto
 src/world/    motore: terreno, edifici, vegetazione, cielo, nuvole, post-processing, collisioni, audio
 tests/        scene sintetiche di cui si conosce la verità, formule meteo e geodetiche
+tools/        conversione una tantum della rete FLAIR in ONNX
 deploy/       unità systemd
 docs/         schermate
-data/         cache, indagini, scarichi e cestino (creata al primo avvio, non versionata)
+data/         cache, indagini, scarichi, cestino e modelli (creata al primo avvio, non versionata)
 ```
 
-Tecnologie: Node con TypeScript nativo e `node:sqlite` sul server; React 19, MapLibre e Vite nell'Atlante; un motore proprio su three.js r187 e WebGL2 sul campo, con ombre a cascate, cielo e nuvole volumetriche, post-processing e collisioni; `three-gpu-pathtracer` per lo studio della luce; `geotiff`, `h5wasm` e `sharp` per i dati; `proj4` per le proiezioni nazionali.
+Tecnologie: Node con TypeScript nativo e `node:sqlite` sul server; React 19, MapLibre e Vite nell'Atlante; un motore proprio su three.js r187 e WebGL2 sul campo, con ombre a cascate, cielo e nuvole volumetriche, post-processing e collisioni; `three-gpu-pathtracer` per lo studio della luce; `geotiff`, `h5wasm` e `sharp` per i dati; `proj4` per le proiezioni nazionali; `onnxruntime-node`, facoltativo, per la rete di segmentazione.
 
 ## Limiti noti
 
@@ -512,6 +547,7 @@ Tecnologie: Node con TypeScript nativo e `node:sqlite` sul server; React 19, Map
 - Le altezze lette dalle ombre risentono dell'inclinazione del satellite e di ciò su cui cade l'ombra: sono stime, e la scheda ne riporta l'attendibilità. Misurano il livello della gronda, non il colmo. Dove asfalto al sole e in ombra non si distinguono, come nel riquadro di Parigi, lo scarto tipico supera i 7 m: la lastra viene segnalata e quelle letture non decidono l'altezza dell'edificio.
 - La datazione degli edifici può sbagliare con alberi e cantieri, e sul Colosseo non esiste una verità di confronto: ogni voce riporta la certezza e va controllata a occhio. Gli scatti con la sola data di pubblicazione non contribuiscono.
 - Il banco delle ombre si confonde dove altri edifici o alberi proiettano ombra sulla stessa zona.
+- La rete FLAIR è addestrata in Francia su foto aeree a 0,2 m da aprile a novembre: su riprese satellitari, altrove e d'inverno vede meno, e la sua combinazione con le regole è tarata su undici riquadri europei.
 - Le anomalie della vegetazione lavorano a 10 m per pixel: mostrano solo tracce grandi, e la causa va verificata.
 - GEDI passa a strisce: un riquadro piccolo può ricevere poche impronte o nessuna, e solo un terzo circa è di buona qualità in città. Non copre oltre 51,6° di latitudine.
 - ICESat-2 e gli altri prodotti NASA del catalogo vengono solo elencati.

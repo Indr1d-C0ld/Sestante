@@ -169,6 +169,8 @@ export type BenchReport = {
   shadowFloors?: { n: number; held: number } | null;
   shadow: MaskScoreRow;
   canopy: MaskScoreRow;
+  /** The same, only four metres or more from any mapped building, where what stands tall is mostly trees. */
+  canopyClear?: MaskScoreRow;
   /** `reliable` is false when the plate's shadows cannot say which sun fits them: weak shadows, or a fit at the end of the search. */
   sun: { used: number; method: string; best: number; iouUsed: number; iouBest: number; reliable?: boolean };
 };

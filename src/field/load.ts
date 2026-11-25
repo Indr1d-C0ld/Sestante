@@ -246,7 +246,10 @@ export async function interpretPlate(
   const small = scaleCanvas(canvas, grid.width, grid.height);
   const rgba = small.getContext("2d")!.getImageData(0, 0, grid.width, grid.height).data;
   const capture = ref.kind === "tiles" ? null : ref.capture;
+  // Optional: the server's network, when installed. Asked first, because the analysis takes the raster away to its worker.
+  const cover = await api.landcover(new Uint8ClampedArray(rgba), grid.width, grid.height);
   const analysis = await runAnalysis({
+    landcover: cover ? { classes: cover.classes, provider: cover.provider, ms: cover.ms } : undefined,
     rgba: new Uint8ClampedArray(rgba),
     width: grid.width,
     height: grid.height,

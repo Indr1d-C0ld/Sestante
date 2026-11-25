@@ -94,6 +94,14 @@ export const api = {
   startJob: (value: { name: string; source: string; bbox: Bbox; zMin: number; zMax: number; format: string }) => post<DownloadJob>("/api/jobs", value),
   cancelJob: (id: string) => fetch(`/api/jobs/${id}/cancel`, { method: "POST" }),
   expeditions: () => getJson<ArchiveRow[]>("/api/expeditions"),
+  /** Land cover classes of an RGBA raster from the server's network, or null when the model is not installed. */
+  landcover: async (rgba: Uint8ClampedArray, width: number, height: number) => {
+    const res = await fetch(`/api/landcover?width=${width}&height=${height}`, { method: "POST", body: rgba as unknown as BodyInit }).catch(() => null);
+    if (!res?.ok) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.length !== width * height * 2) return null;
+    return { classes: bytes.slice(0, width * height), confidence: bytes.slice(width * height), provider: res.headers.get("X-Provider") ?? "", ms: Number(res.headers.get("X-Ms")) };
+  },
   lidarCoverage: (b: Bbox) => getJson<LidarOffer[]>(`/api/earth/lidar/coverage?${boxQuery(b)}`),
   lidarGrid: async (id: string, kind: "dtm" | "dsm", b: Bbox, cols: number, rows: number) => {
     const res = await fetch(`/api/earth/lidar?${boxQuery(b)}&id=${id}&kind=${kind}&cols=${cols}&rows=${rows}`);

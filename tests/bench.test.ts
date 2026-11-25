@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { castShadows, fitSunAltitude, maskScore, resampleMask, type SurfaceGrid } from "../src/vision/bench.ts";
-import { analyzePlate, asphaltShadowLevel, fillRing, greenCast, shadowHeights, type Footprint } from "../src/vision/analyze.ts";
+import { analyzePlate, asphaltShadowLevel, fillRing, greenCast, leafOn, shadowHeights, type Footprint } from "../src/vision/analyze.ts";
 
 /** Flat ground with one block: 10 m tall, 10 cells wide, on a 1 m grid. */
 function block(size = 80, tall = 10): SurfaceGrid {
@@ -157,4 +157,37 @@ test("un sole trovato al limite della ricerca è dichiarato tale", () => {
   assert.equal(inside.atEdge, false);
   // A mask that calls everything shadow is best matched by the lowest sun there is.
   assert.equal(fitSunAltitude(grid, Math.PI, new Uint8Array(open), open).atEdge, true);
+});
+
+test("le chiome sono in foglia da maggio a settembre a nord, da novembre a marzo a sud, e senza data non si sa", () => {
+  assert.equal(leafOn("2025-08-06", 51.5), true);
+  assert.equal(leafOn("2025-04-25", 53.5), false);
+  assert.equal(leafOn("2025-01-13", -33.9), true);
+  assert.equal(leafOn("2025-07-01", -33.9), false);
+  assert.equal(leafOn("2025-07-01", 10), false);
+  assert.equal(leafOn(null, 45), false);
+});
+
+test("la rete aggiunge chiome e ne toglie sull'asfalto solo se la ripresa è in foglia", () => {
+  const w = 60;
+  const h = 60;
+  const rgba = new Uint8ClampedArray(w * h * 4);
+  // Grey ground with a green, rough patch the rules call canopy, and a tree only the network sees.
+  for (let k = 0; k < w * h; k++) {
+    const x = k % w;
+    const y = Math.floor(k / w);
+    const crown = x >= 10 && x < 25 && y >= 10 && y < 25;
+    const noise = ((x * 7 + y * 13) % 5) * 9;
+    rgba.set(crown ? [40 + noise, 110 + noise, 40] : [150, 150, 150], k * 4);
+    rgba[k * 4 + 3] = 255;
+  }
+  const classes = new Uint8Array(w * h).fill(2);
+  for (let y = 35; y < 50; y++) for (let x = 35; x < 50; x++) classes[y * w + x] = 6;
+  const base = { rgba, width: w, height: h, mpp: 1, lat: 45, lon: 7, footprints: [], roads: [], water: [], osmTrees: [], register: false };
+  const canopy = (date: string) => {
+    const r = analyzePlate({ ...base, rgba: new Uint8ClampedArray(rgba), captureDate: date, landcover: { classes, provider: "test", ms: 0 } });
+    return { patch: r.classMap[(17 * w + 17) * 4]!, network: r.classMap[(42 * w + 42) * 4]! };
+  };
+  assert.deepEqual(canopy("2025-01-10"), { patch: 255, network: 255 });
+  assert.deepEqual(canopy("2025-07-10"), { patch: 0, network: 255 });
 });
