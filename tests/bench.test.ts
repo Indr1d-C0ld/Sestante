@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { castShadows, fitSunAltitude, maskScore, resampleMask, type SurfaceGrid } from "../src/vision/bench.ts";
+import { aboveLevels, storeyHeight } from "../src/core/storeys.ts";
 import { analyzePlate, asphaltShadowLevel, fillRing, greenCast, leafOn, shadowHeights, type Footprint } from "../src/vision/analyze.ts";
 
 /** Flat ground with one block: 10 m tall, 10 cells wide, on a 1 m grid. */
@@ -190,4 +191,22 @@ test("la rete aggiunge chiome e ne toglie sull'asfalto solo se la ripresa è in 
   };
   assert.deepEqual(canopy("2025-01-10"), { patch: 255, network: 255 });
   assert.deepEqual(canopy("2025-07-10"), { patch: 0, network: 255 });
+});
+
+test("l'altezza del piano si tara sugli edifici con altezza e piani, e con pochi resta vicina a 3,2 m", () => {
+  const rows = (n: number, storey: number) => Array.from({ length: n }, (_, i) => ({ height: (3 + (i % 3)) * storey + 3, levels: 3 + (i % 3), roof: 3 }));
+  assert.deepEqual(storeyHeight(rows(4, 4)), { metres: 3.2, samples: 4 });
+  const ten = storeyHeight(rows(10, 4));
+  assert.ok(Math.abs(ten.metres - 3.6) < 1e-9, `${ten.metres}`);
+  assert.ok(storeyHeight(rows(200, 4)).metres > 3.95);
+  // A tower mapped with its floors wrong does not count.
+  assert.equal(storeyHeight([...rows(10, 4), { height: 120, levels: 3, roof: 3 }]).samples, 10);
+});
+
+test("sopra i piani contati: 3 m fino a cinque piani, meno sopra, 1 m sui tetti piani", () => {
+  assert.equal(aboveLevels(4), 3);
+  assert.equal(aboveLevels(6), 2);
+  assert.equal(aboveLevels(9), 1);
+  assert.equal(aboveLevels(4, "flat"), 1);
+  assert.equal(aboveLevels(4, "gabled", true), 2);
 });

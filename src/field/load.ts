@@ -4,6 +4,7 @@ import { bestZoom, pointInRing, Projection, ringArea, type Bbox } from "../core/
 import type { FieldSpec, PlateRef } from "../core/types.ts";
 import type { AnalysisInput, AnalysisResult, Footprint, TreeHeightOrigin } from "../vision/analyze.ts";
 import type { WorkerReply } from "../vision/worker.ts";
+import { aboveLevels, STOREY_MIN, storeyHeight } from "../core/storeys.ts";
 
 type LatLon = [number, number];
 type OsmFeature = { id: string; tags: Record<string, string>; rings?: LatLon[][]; line?: LatLon[]; at?: LatLon };
@@ -102,20 +103,7 @@ function parseMeters(value: string | undefined) {
   return Number.parseFloat(value.replace(",", "."));
 }
 
-/**
- * What stands above the counted floors when the map gives a floor count and nothing about the roof: roof, parapet and the
- * taller ground floor. Measured, not assumed: on 887 buildings of Paris, London, Zurich and Amsterdam the laser's top stood
- * 3 to 4 m above floors x 3.2 m up to five floors, 2 m at six, 1 m from seven up, where roofs are flat more often.
- * Where the roof's own floors are mapped and counted at 2.8 m each, the top still stood 2 to 3 m higher (165 buildings in Zurich and Paris).
- * Checked afterwards on 838 buildings of four cities not used to derive it (Rotterdam, Antwerp, Lyon, Manchester): the bias
- * fell from -4.7 to -2.3 m and the typical error from 5.0 to 3.5 m. It improved six boxes of seven and worsened one; from
- * city to city storeys differ by more than any single rule can follow, so this stays a prior and not a measure.
- */
-export function aboveLevels(levels: number, roofShape?: string, roofLevelsMapped = false) {
-  if (roofShape === "flat") return 1;
-  const open = levels <= 5 ? 3 : levels === 6 ? 2 : 1;
-  return roofLevelsMapped ? Math.min(2, open) : open;
-}
+
 
 const TYPE_HEIGHTS: Record<string, number> = {
   shed: 3,
@@ -649,6 +637,13 @@ export async function loadField(spec: FieldSpec, onStep: (text: string) => void,
     return { id: feature.id, tags: feature.tags, x: x / Math.max(1, ring.length / 2), z: z / Math.max(1, ring.length / 2) };
   };
   const osmTrees = bundle.trees.map(pointOf).filter((tree) => inBox(tree.x, tree.z));
+
+  // Storey height of this box, where the map gives both a height and a floor count on the same buildings.
+  const storey = storeyHeight(pending.filter((item) => !item.isPart && item.levels > 0 && item.tagHeight != null).map((item) => ({ height: item.tagHeight!, levels: item.levels, roof: item.levelHeight! - item.levels * 3.2 })));
+  if (storey.samples >= STOREY_MIN) {
+    for (const item of pending) if (item.levelHeight != null && item.levels > 0) item.levelHeight += item.levels * (storey.metres - 3.2);
+    log.push(`Altezza di un piano in questo riquadro: ${storey.metres.toFixed(2)} m, da ${storey.samples} edifici con altezza e piani mappati (3,2 m altrove).`);
+  }
 
   const footprints: Footprint[] = pending
     .filter((item) => !item.isPart)

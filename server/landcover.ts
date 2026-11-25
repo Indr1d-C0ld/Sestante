@@ -43,7 +43,7 @@ let lastProblem: string | null = null;
 
 async function load() {
   if (!existsSync(LANDCOVER_FILE)) {
-    lastProblem = `Modello assente: ${LANDCOVER_FILE}. Si ottiene con tools/flair-to-onnx.py, vedi il README.`;
+    lastProblem = `Modello assente: ${LANDCOVER_FILE}. Si installa con npm run modello, vedi il README.`;
     return null;
   }
   let ort: Ort;

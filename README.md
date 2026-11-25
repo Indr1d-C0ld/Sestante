@@ -4,7 +4,7 @@
 ![Node 24 o più recente](https://img.shields.io/badge/node-24-339933?logo=node.js&logoColor=white)
 ![three.js](https://img.shields.io/badge/three.js-r187-black?logo=three.js)
 ![WebGL2](https://img.shields.io/badge/WebGL-2-990000?logo=webgl&logoColor=white)
-![Test](https://img.shields.io/badge/test-116-success)
+![Test](https://img.shields.io/badge/test-118-success)
 
 Scegli un riquadro di Terra. Sestante ne legge la ripresa satellitare, la ricostruisce in 3D e ti ci fa camminare dentro in prima persona, con la borsa di strumenti di un ricercatore sul campo e un registro che si scrive da solo.
 
@@ -68,7 +68,7 @@ Poi apri http://localhost:4173. Senza chiavi funziona già tutto ciò che usa fo
 | --- | --- |
 | `npm start` | Server di produzione sulla porta 4173, con la build in `dist/` |
 | `npm run dev` | Sviluppo con Vite e ricarica a caldo (usa anche la porta successiva) |
-| `npm test` | I 116 test, su scene sintetiche di cui si conosce la verità |
+| `npm test` | I 118 test, su scene sintetiche di cui si conosce la verità |
 | `npm run typecheck` | Controllo dei tipi |
 
 Variabili d'ambiente: `PORT` per la porta, `SESTANTE_DATA` per la cartella dei dati (predefinita `data/` nel progetto). Il server ascolta solo su `127.0.0.1`.
@@ -78,7 +78,11 @@ Variabili d'ambiente: `PORT` per la porta, `SESTANTE_DATA` per la cartella dei d
 Sestante può far leggere la ripresa anche a FLAIR-INC, una rete dell'IGN francese che distingue edifici, asfalto, terra, acqua, conifere, latifoglie, arbusti ed erba. Senza, tutto funziona con le regole proprie. Servono due cose:
 
 1. `onnxruntime-node`, che `npm ci` installa come dipendenza facoltativa (circa 570 MB). Usa la scheda grafica tramite WebGPU, se c'è, altrimenti il processore: circa 1 s per ripresa su una RTX 3060, 5 s sul processore.
-2. Il modello in `data/models/flair-rgb15.onnx` (98 MB). L'IGN lo pubblica in formato PyTorch: [tools/flair-to-onnx.py](tools/flair-to-onnx.py) lo converte una volta sola e contiene i comandi, che richiedono Python con PyTorch per il solo processore (circa 1 GB, fuori dal progetto). Il file dell'IGN viene aperto in modo che legga solo numeri, senza eseguire codice.
+2. Il modello in `data/models/flair-rgb15.onnx` (98 MB): `npm run modello` lo scarica dalla release [modello-flair-rgb15-v1](https://github.com/Indr1d-C0ld/Sestante/releases/tag/modello-flair-rgb15-v1) e ne verifica l'impronta. È il file dell'IGN convertito da PyTorch a ONNX, con i pesi invariati. Chi preferisce convertirlo da sé trova i comandi in [tools/flair-to-onnx.py](tools/flair-to-onnx.py): servono Python e PyTorch per il solo processore (circa 1 GB, fuori dal progetto), e il file dell'IGN viene aperto in modo che legga solo numeri, senza eseguire codice.
+
+```bash
+npm run modello
+```
 
 `GET /api/landcover/status` dice se il modello è pronto e, se no, perché. La prima nota di ogni indagine dice se la rete è stata usata.
 
@@ -473,6 +477,15 @@ Quattro riquadri di 600 m, celle di 1 m, novembre 2026:
 | **Insieme** | **838** | **−4,7 m, 5,0 m** | **−2,3 m, 3,5 m** |
 
   La correzione va nel verso giusto in sei riquadri su sette e dimezza la tendenza, ma non la chiude: nei centri storici di Lione e Manchester i piani sono alti più di 4 m, mentre a sud di Manchester, dove i piani sono bassi, peggiora. Altre regole provate (piani più alti, aggiunte diverse), tarate su un gruppo di città e giudicate sull'altro, non fanno meglio sull'insieme: fra una città e l'altra l'altezza di un piano cambia più di quanto una regola sola possa seguire. Per questo l'errore dichiarato per le altezze dai piani è 3,5 m con 2,3 m di tendenza comune, quello misurato qui, e dove esiste un LiDAR conviene prendere le altezze dal laser. La misura di Prati, fatta prima, non è stata ripetuta. Ne beneficiano anche le stime per quartiere (a Zurigo da 4,5 m a 3,2 m di scarto tipico) e le letture dalle ombre, che su quegli edifici si tarano.
+- **Altezza del piano per riquadro.** Dove la mappa dà altezza e piani sugli stessi edifici, almeno cinque, il riquadro tara quanto vale un suo piano e lo applica agli edifici che hanno solo i piani; con pochi esempi la stima resta vicina a 3,2 m. Tara su edifici con altezza e giudica su edifici con soli piani, quindi su gruppi diversi. Negli undici riquadri è scattata in tre:
+
+| Luogo | Edifici tarati | Piano | Altezze dai piani: prima | Dopo |
+| --- | --- | --- | --- | --- |
+| Rotterdam | 14 | 3,55 m | −1,1 m, 1,2 m | −0,3 m, 0,5 m |
+| Manchester, centro | 7 | 3,43 m | −3,1 m, 3,4 m | −2,0 m, 2,8 m |
+| Amsterdam | 8 | 3,14 m | −0,6 m, 3,5 m | −0,6 m, 3,6 m |
+
+  Dove l'errore è più grande, Lione e Anversa centro, la mappa non ha edifici con entrambe le informazioni, e la taratura non scatta. Le ombre non possono sostituirle: la loro pendenza è tarata proprio sulle altezze dai piani, e restituirebbero 3,2 m. La prima nota dell'indagine dice se e quanto è stato tarato il piano.
 - **Altezze minime.** Un minimo deve sbagliare per difetto: usa la pendenza più bassa fra quella del sole e quella tarata. Il laser lo conferma in 588 casi su 624.
 
 - **Dominante di colore.** Le lastre di Parigi e Londra sono verdastre: l'indice di verde dell'asfalto valeva 0,14 e 0,10 contro 0,02 ad Amsterdam, e circa il 60% dei pixel passava per vegetazione, strade comprese. Ora la dominante si misura su strade e tetti mappati, che vegetazione non sono, fascia per fascia di luminosità, e si sottrae. A Parigi la vegetazione scende dal 62 al 25% della lastra, la direzione letta del sole passa da 137° a 148° (il laser indica circa 153°) e il sole letto dagli edifici da 58° a 45°.
