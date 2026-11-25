@@ -423,7 +423,7 @@ export function FieldScreen({ expedition: initial, canvas, findings, study, onEx
           ["Altezza stimata", `${t.h.toFixed(1)} m`],
           ["Raggio chioma", `${t.r.toFixed(1)} m`],
           ["Volume chioma", `circa ${formatVolume(crownVolume(t.r, t.h).value)}, solo ordine di grandezza`],
-          ["Fonte", t.origin === "mappa" ? "altezza scritta sulla mappa" : t.rawH != null ? "quota locale delle chiome, dal laser GEDI" : t.origin === "ombra" ? "ombra sulla lastra, poco attendibile" : t.source === "osm" ? "albero mappato, altezza dalla chioma" : "dimensione della chioma, poco attendibile"],
+          ["Fonte", t.origin === "laser" ? "rilievo laser, punto più alto sotto la chioma" : t.origin === "mappa" ? "altezza scritta sulla mappa" : t.rawH != null ? "quota locale delle chiome, dal laser GEDI" : t.origin === "ombra" ? "ombra sulla lastra, poco attendibile" : t.source === "osm" ? "albero mappato, altezza dalla chioma" : "dimensione della chioma, poco attendibile"],
           ...(t.rawH != null ? ([["Letta dalla lastra", `${t.rawH.toFixed(1)} m`]] as [string, string][]) : []),
         ],
         note: `Albero: ${t.h.toFixed(1)} m, chioma ${(t.r * 2).toFixed(1)} m.`,

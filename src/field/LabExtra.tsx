@@ -532,14 +532,15 @@ export function LidarTab(props: LabProps) {
               disabled={!!busy || !offer.surface}
               title={offer.surface ? undefined : "Questo rilievo non pubblica la superficie con gli edifici."}
               onClick={() =>
-                work("Misuro gli edifici…", async () => {
+                work("Misuro edifici e alberi…", async () => {
                   const row = await applyLidar(engine, offer);
                   onLidarReport(row);
-                  addNote("sistema", `Il LiDAR ha fissato ${row.changed} altezze`, `${row.name}: ${row.seen} edifici visti. Le altezze scritte sulla mappa restano, per poterle confrontare.`, { instrument: "LiDAR" });
+                  const treeLine = row.trees ? ` Alberi: ${row.trees.measured} con l'altezza del laser, ${row.trees.removed} letti dalla ripresa tolti perché il laser lì non vede nulla sopra i 3 m (il rilievo ha una data sua: un albero piantato dopo non c'è).` : "";
+                  addNote("sistema", `Il LiDAR ha fissato ${row.changed} altezze`, `${row.name}: ${row.seen} edifici visti. Le altezze scritte sulla mappa restano, per poterle confrontare.${treeLine}`, { instrument: "LiDAR" });
                 })
               }
             >
-              Altezze degli edifici dal laser
+              Edifici e alberi dal laser
             </button>
             <button className="btn tiny" onClick={onUseLidarTerrain}>
               Usalo come terreno del mondo
@@ -567,7 +568,7 @@ export function LidarTab(props: LabProps) {
         <div>
           <div className="section-title">Altezze dal rilievo: {report.name}</div>
           <p className="small">
-            {report.seen} edifici misurati, {report.changed} altezze sostituite. Le altezze scritte sulla mappa non vengono toccate.
+            {report.seen} edifici misurati, {report.changed} altezze sostituite. Le altezze scritte sulla mappa non vengono toccate.{report.trees ? ` Alberi: ${report.trees.measured} misurati, ${report.trees.removed} tolti perché il laser lì non vede nulla di alto.` : ""}
           </p>
           <table className="data">
             <thead>

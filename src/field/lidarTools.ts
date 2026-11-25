@@ -90,7 +90,9 @@ export async function applyLidar(engine: Engine, offer: LidarOffer): Promise<Lid
   const tallest: LidarReport["tallest"] = [];
   let changed = 0;
   let seen = 0;
+  const built = new Uint8Array(cols * rows);
   for (const { b, row, cells } of standingBuildings(engine, dsm, ground, cols, rows)) {
+    for (const k of cells) built[k] = 1;
     if (row.coverage < 0.5 || row.height < 2) continue;
     seen++;
     differences.set(b.source, [...(differences.get(b.source) ?? []), b.height - row.height]);
@@ -117,6 +119,7 @@ export async function applyLidar(engine: Engine, offer: LidarOffer): Promise<Lid
     changed++;
   }
   engine.refreshBuildings();
+  const trees = surveyTrees(engine, dsm, ground, built, cols, rows);
   tallest.sort((a, b) => b.measured - a.measured);
   return {
     provider: offer.id,
@@ -126,7 +129,51 @@ export async function applyLidar(engine: Engine, offer: LidarOffer): Promise<Lid
     changed,
     bySource: [...differences].map(([label, errors]) => errorStats(label, errors)).sort((a, b) => b.n - a.n),
     tallest: tallest.slice(0, 8),
+    trees,
   };
+}
+
+/**
+ * Trees against the survey: each takes the highest point the laser saw under the inner part of its crown, away from
+ * buildings. A tree read from the plate where the laser sees nothing taller than 3 m goes: per-tree heights read from
+ * the plate had almost no relation to the laser's (correlation 0.0 to 0.4), and half of those trees stood on lawns,
+ * hedges or shadows. Mapped trees stay, with the laser's height when it has one.
+ */
+function surveyTrees(engine: Engine, dsm: ArrayLike<number>, ground: ArrayLike<number>, built: Uint8Array, cols: number, rows: number) {
+  const p = engine.data.projection;
+  const cellX = (p.halfX * 2) / cols;
+  const cellZ = (p.halfZ * 2) / rows;
+  let measured = 0;
+  let removed = 0;
+  const keep = engine.plate.trees.filter((tree) => {
+    const r = Math.max(cellX, tree.r * 0.7);
+    let top = -Infinity;
+    for (let z = tree.z - r; z <= tree.z + r; z += cellZ) {
+      for (let x = tree.x - r; x <= tree.x + r; x += cellX) {
+        if ((x - tree.x) ** 2 + (z - tree.z) ** 2 > r * r) continue;
+        const i = Math.floor((x + p.halfX) / cellX);
+        const j = Math.floor((z + p.halfZ) / cellZ);
+        if (i < 0 || j < 0 || i >= cols || j >= rows || built[j * cols + i]) continue;
+        const v = dsm[j * cols + i]! - ground[j * cols + i]!;
+        if (Number.isFinite(v)) top = Math.max(top, v);
+      }
+    }
+    // Outside the survey, or all under buildings: nothing to say.
+    if (top === -Infinity) return true;
+    if (top > 3) {
+      tree.h = top;
+      tree.origin = "laser";
+      tree.rawH = undefined;
+      measured++;
+      return true;
+    }
+    if (tree.source === "osm") return true;
+    removed++;
+    return false;
+  });
+  engine.plate.trees.splice(0, engine.plate.trees.length, ...keep);
+  engine.refreshTrees();
+  return { measured, removed };
 }
 
 /**

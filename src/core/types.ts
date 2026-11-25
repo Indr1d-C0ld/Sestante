@@ -149,6 +149,8 @@ export type LidarReport = {
   changed: number;
   bySource: { label: string; n: number; bias: number; typical: number; within3: number }[];
   tallest: { name: string; measured: number; mapped: number; source: string }[];
+  /** Trees: heights taken from the survey, and trees read from the plate where the survey sees nothing above 3 m. */
+  trees?: { measured: number; removed: number };
 };
 
 type MaskScoreRow = { cells: number; found: number; expected: number; precision: number; recall: number; iou: number };

@@ -43,7 +43,7 @@ export type SunReading = {
 /** `atLeast` is the height a shadow stopped by the house opposite still proves: a floor, not a measure. */
 export type HeightReading = { h: number | null; confidence: number; rays: number; atLeast?: number };
 
-export type TreeHeightOrigin = "mappa" | "ombra" | "chioma" | "griglia";
+export type TreeHeightOrigin = "mappa" | "ombra" | "chioma" | "griglia" | "laser";
 
 export type TreeReading = { x: number; y: number; r: number; h: number; origin: TreeHeightOrigin; color: [number, number, number]; kind: number; source: "ripresa" | "osm"; species?: string };
 
