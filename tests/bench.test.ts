@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { castShadows, fitSunAltitude, maskScore, resampleMask, type SurfaceGrid } from "../src/vision/bench.ts";
+import { describeLean, leanFrom, leanFromSurface } from "../src/vision/lean.ts";
 import { aboveLevels, storeyHeight } from "../src/core/storeys.ts";
 import { analyzePlate, asphaltShadowLevel, fillRing, greenCast, leafOn, shadowHeights, type Footprint } from "../src/vision/analyze.ts";
 
@@ -209,4 +210,24 @@ test("sopra i piani contati: 3 m fino a cinque piani, meno sopra, 1 m sui tetti 
   assert.equal(aboveLevels(9), 1);
   assert.equal(aboveLevels(4, "flat"), 1);
   assert.equal(aboveLevels(4, "gabled", true), 2);
+});
+
+test("l'inclinazione di una ripresa si ritrova proiettando il rilievo sui bordi della foto", () => {
+  const n = 200;
+  const heights = new Float32Array(n * n);
+  // Blocks of different heights, as a survey would see them.
+  const blocks = [[20, 20, 30, 18], [70, 30, 25, 30], [130, 40, 30, 12], [40, 110, 35, 24], [110, 120, 30, 40], [160, 150, 25, 16]] as const;
+  for (const [x0, y0, size, h] of blocks) for (let j = y0; j < y0 + size; j++) for (let i = x0; i < x0 + size; i++) heights[j * n + i] = h;
+  // The plate: ground grey, roofs bright, each roof drawn where a satellite leaning east by 0.2 and south by 0.1 sees it.
+  const lum = new Float32Array(n * n).fill(0.3);
+  for (const [x0, y0, size, h] of blocks) {
+    const dx = Math.round(0.2 * h);
+    const dy = Math.round(0.1 * h);
+    for (let j = y0 + dy; j < y0 + dy + size; j++) for (let i = x0 + dx; i < x0 + dx + size; i++) if (i < n && j < n) lum[j * n + i] = 0.8;
+  }
+  const lean = leanFromSurface(lum, { heights, cols: n, rows: n, cell: 1 })!;
+  assert.ok(Math.abs(lean.x - 0.2) <= 0.02 && Math.abs(lean.z - 0.1) <= 0.02, `${lean.x} ${lean.z}`);
+  assert.ok(lean.gain > 1.2);
+  const said = describeLean(leanFrom(10, 97));
+  assert.ok(Math.abs(said.tilt - 10) < 1e-9 && Math.abs(said.toward - 97) < 1e-9);
 });

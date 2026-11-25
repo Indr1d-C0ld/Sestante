@@ -277,6 +277,11 @@ export class Engine {
     return this.gl ? this.gl.capabilities.getMaxAnisotropy() : 16;
   }
 
+  /** The satellite's lean, as a shift of the plate per metre of height (east, south): roofs read the plate where it saw them. */
+  setLean(x: number, z: number) {
+    U.uLean.value.set(x, z);
+  }
+
   /** The canvas the field is drawn on, whichever engine draws it. */
   get canvasElement() {
     return this.canvas;

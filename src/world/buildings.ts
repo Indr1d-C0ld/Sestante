@@ -64,9 +64,12 @@ class Sink {
   color: number[] = [];
   info: number[] = [];
   prov: number[] = [];
+  ground: number[] = [];
   index: number[] = [];
   /** Source of the height and how sure it is, stamped on every vertex of the current building. */
   stamp: [number, number] = [0, 1];
+  /** Ground level of the current building: a roof's height above it decides where a leaning satellite saw it. */
+  groundY = 0;
 
   vert(x: number, y: number, z: number, nx: number, ny: number, nz: number, u: number, v: number, c: THREE.Color, floorH: number, style: number, seed: number) {
     this.pos.push(x, y, z);
@@ -75,6 +78,7 @@ class Sink {
     this.color.push(c.r, c.g, c.b);
     this.info.push(floorH, style, seed);
     this.prov.push(this.stamp[0], this.stamp[1]);
+    this.ground.push(this.groundY);
     return this.pos.length / 3 - 1;
   }
 
@@ -87,6 +91,7 @@ class Sink {
     g.setAttribute("aColor", new THREE.Float32BufferAttribute(this.color, 3));
     g.setAttribute("aInfo", new THREE.Float32BufferAttribute(this.info, 3));
     g.setAttribute("aProv", new THREE.Float32BufferAttribute(this.prov, 2));
+    g.setAttribute("aGround", new THREE.Float32BufferAttribute(this.ground, 1));
     g.setIndex(this.index);
     g.computeBoundingSphere();
     return g;
@@ -438,7 +443,8 @@ const WALL_OUT = /* glsl */ `
 
 const ROOF_MAP = /* glsl */ `
   vec4 cls;
-  vec3 albedo = plateAlbedo(vW.xz, cls);
+  // A leaning satellite saw this roof shifted by its height above the ground: read the plate where it saw it.
+  vec3 albedo = plateAlbedo(vW.xz + uLean * max(vW.y - vGround, 0.), cls);
   float dRoof = length(uCam - vW);
   float nR = texture2D(uNoise, vW.xz * .47).a;
   albedo *= mix(1., .85 + .3 * nR, (1. - smoothstep(15., 120., dRoof)) * uDetail);
@@ -475,6 +481,7 @@ export function buildBuildings(buildings: Building[], csm: CSM | null, cell = 26
     const yTop = building.top;
     const eave = yTop - building.roofHeight;
     const groundRef = yTop - building.height;
+    bucket.walls.groundY = bucket.roofs.groundY = groundRef;
     const floor = building.minHeight > 0 ? groundRef + building.minHeight : building.base - 2.5;
     const floorH = Math.max(2.8, Math.min(style === 3 ? 12 : 4.6, (building.height - building.roofHeight) / Math.max(1, building.levels)));
     addWalls(bucket.walls, outer, floor, eave, color, floorH, style, seed, false, groundRef);
@@ -521,9 +528,9 @@ export function buildBuildings(buildings: Building[], csm: CSM | null, cell = 26
     new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.88, metalness: 0, envMapIntensity: 0.5, side: THREE.DoubleSide }),
     {
       key: "roofs",
-      vertexPars: "attribute vec2 aProv; varying vec2 vProv;",
-      vertexBegin: "vProv = aProv;",
-      fragmentPars: `${PLATE_GLSL}\n${PROJECT_GLSL}\n${PROV_GLSL}\nvarying vec2 vProv;`,
+      vertexPars: "attribute vec2 aProv; attribute float aGround; varying vec2 vProv; varying float vGround;",
+      vertexBegin: "vProv = aProv; vGround = aGround;",
+      fragmentPars: `${PLATE_GLSL}\n${PROJECT_GLSL}\n${PROV_GLSL}\nvarying vec2 vProv;\nvarying float vGround;\nuniform vec2 uLean;`,
       map: ROOF_MAP,
       afterNormal: LAYERS_NORMAL,
     },

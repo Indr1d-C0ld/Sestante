@@ -4,7 +4,7 @@ import { alignments, astroEvents, horizonAltitude, planAxis } from "../core/arch
 import { formatLatLon, type Projection } from "../core/geo.ts";
 import { floodStats, sectionAlong, viewshed, type Section } from "../core/fieldwork.ts";
 import { sunEvents } from "../core/solar.ts";
-import type { Expedition, Hypothesis, Note, NoteKind, PlateVersion, StrataSummary, Investigation, BenchReport, LidarReport, PhotoFindRow, PhotoPlacement as PlacedPhoto, SavedRoute, SavedStudy } from "../core/types.ts";
+import type { Expedition, Hypothesis, Note, NoteKind, PlateVersion, StrataSummary, Investigation, BenchReport, LidarReport, PlateLean, PhotoFindRow, PhotoPlacement as PlacedPhoto, SavedRoute, SavedStudy } from "../core/types.ts";
 import type { ShadowPlate } from "../vision/shadowTest.ts";
 import type { Engine } from "../world/engine.ts";
 import { PROVENANCE_LEGEND } from "../world/shading.ts";
@@ -16,9 +16,10 @@ import { absentIds, applyLaser, applyStrata, assessWorld, correctTrees, cubature
 import { formatRange, formatVolume, solidVolume } from "../vision/volume.ts";
 import { AncientRoutes, Dossier, Inquiry, LidarTab, Studies } from "./LabExtra.tsx";
 import { PhotoFind } from "./PhotoFind.tsx";
+import { LeanTab } from "./LeanTab.tsx";
 import { demDifference, fitTrees, type ErrorStats, type LaserAssessment, type TreeFit, type TreeModel } from "../vision/laser.ts";
 
-export type LabTab = "riprese" | "laser" | "rilievo" | "volumi" | "ipotesi" | "sezione" | "vista" | "cielo" | "acqua" | "origine" | "esporta" | "servizi" | "studi" | "indagine" | "vie" | "lidar" | "foto";
+export type LabTab = "inclinazione" | "riprese" | "laser" | "rilievo" | "volumi" | "ipotesi" | "sezione" | "vista" | "cielo" | "acqua" | "origine" | "esporta" | "servizi" | "studi" | "indagine" | "vie" | "lidar" | "foto";
 
 const TABS: [LabTab, string][] = [
   ["indagine", "Indagine"],
@@ -26,6 +27,7 @@ const TABS: [LabTab, string][] = [
   ["vie", "Vie antiche"],
   ["foto", "Foto"],
   ["lidar", "LiDAR"],
+  ["inclinazione", "Inclinazione"],
   ["riprese", "Riprese"],
   ["laser", "Laser"],
   ["rilievo", "Rilievo"],
@@ -79,6 +81,7 @@ export type LabProps = {
   onSights: (list: { a: { x: number; z: number }; b: { x: number; z: number }; visible: boolean }[]) => void;
   onLidarReport: (row: LidarReport) => void;
   onBenchReport: (row: BenchReport) => void;
+  onLean: (lean: PlateLean | null) => void;
   onUseLidarTerrain: () => void;
   onPlacement: (row: PlacedPhoto) => Promise<unknown> | void;
   onPhotoFinds: (list: PhotoFindRow[]) => void;
@@ -121,6 +124,7 @@ export function LabPanel(props: LabProps) {
         {tab === "indagine" && <Inquiry {...props} />}
         {tab === "vie" && <AncientRoutes {...props} />}
         {tab === "lidar" && <LidarTab {...props} />}
+        {tab === "inclinazione" && <LeanTab {...props} />}
         {tab === "foto" && <PhotoFind {...props} />}
       </div>
     </div>

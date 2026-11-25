@@ -21,6 +21,8 @@ export const U = {
   uGain: { value: null as THREE.Texture | null },
   uClass: { value: null as THREE.Texture | null },
   uDeshadow: { value: 1 },
+  /** Shift of the plate per metre of height (east, south): the satellite's lean. Zero for orthophotos. */
+  uLean: { value: new THREE.Vector2() },
   uDetail: { value: 0.8 },
   uGrid: { value: 0 },
   uCam: { value: new THREE.Vector3() },

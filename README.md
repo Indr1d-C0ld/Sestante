@@ -4,7 +4,7 @@
 ![Node 24 o più recente](https://img.shields.io/badge/node-24-339933?logo=node.js&logoColor=white)
 ![three.js](https://img.shields.io/badge/three.js-r187-black?logo=three.js)
 ![WebGL2](https://img.shields.io/badge/WebGL-2-990000?logo=webgl&logoColor=white)
-![Test](https://img.shields.io/badge/test-118-success)
+![Test](https://img.shields.io/badge/test-119-success)
 
 Scegli un riquadro di Terra. Sestante ne legge la ripresa satellitare, la ricostruisce in 3D e ti ci fa camminare dentro in prima persona, con la borsa di strumenti di un ricercatore sul campo e un registro che si scrive da solo.
 
@@ -68,7 +68,7 @@ Poi apri http://localhost:4173. Senza chiavi funziona già tutto ciò che usa fo
 | --- | --- |
 | `npm start` | Server di produzione sulla porta 4173, con la build in `dist/` |
 | `npm run dev` | Sviluppo con Vite e ricarica a caldo (usa anche la porta successiva) |
-| `npm test` | I 118 test, su scene sintetiche di cui si conosce la verità |
+| `npm test` | I 119 test, su scene sintetiche di cui si conosce la verità |
 | `npm run typecheck` | Controllo dei tipi |
 
 Variabili d'ambiente: `PORT` per la porta, `SESTANTE_DATA` per la cartella dei dati (predefinita `data/` nel progetto). Il server ascolta solo su `127.0.0.1`.
@@ -445,6 +445,23 @@ Ogni strumento è stato provato dove la risposta esiste già. I test automatici 
 | Foto da localizzare | Interno del Colosseo | "Ambiguo" o "impossibile", come deve |
 
 Le altre chiavi di lettura sono nel codice: `tests/` contiene le scene sintetiche, e ogni scheda del Laboratorio mostra su quante misure si regge ciò che dice.
+
+### Inclinazione della ripresa
+
+Un satellite guarda quasi sempre un po' di sbieco: ciò che sta in piedi compare spostato nella foto, tanto più quanto è alto. Le ortofoto aeree sono raddrizzate. Proiettando sulla foto i bordi del rilievo laser, ognuno alla sua altezza, l'inclinazione si misura:
+
+| Luogo | Ripresa | Inclinazione | Bordi che combaciano, rispetto a nessuna |
+| --- | --- | --- | --- |
+| Parigi | WorldView-2, precisione dichiarata 8,5 m | 9,7° verso est (97°) | +3% |
+| Londra | WorldView-3, precisione dichiarata 8,5 m | 15,6° verso nord-nord-est (15°) | +9% |
+| Zurigo | ortofoto swisstopo, 0,1 m | 2,6°, rumore | +1% |
+| Amsterdam | ortofoto Beeldmateriaal, 0,15 m | 4,9°, rumore | +2% |
+
+La scheda **Inclinazione** del Laboratorio la misura così dove esiste un rilievo con edifici e chiome (circa 10 secondi). Altrove la si regola a mano: si spostano due cursori finché i contorni dei tetti, disegnati sulla foto alla quota della gronda, combaciano con i tetti veri. Il valore si salva con l'indagine, dichiara se viene dal rilievo o dalla mano, e vale solo per la ripresa su cui è stato fissato. Con l'inclinazione i tetti leggono la foto nel punto in cui il satellite li ha visti, invece della strada o della facciata accanto: un tetto di 20 m a Londra si sposta di quasi 6 m.
+
+Cosa non ha funzionato, perché non venga ritentato alla cieca:
+- **Stime automatiche senza rilievo.** Sono state provate sui bordi dei tetti in cinque varianti e sbagliavano di circa 3 m a 20 m d'altezza, poco meglio che ignorare l'inclinazione. Quando gli edifici sono alti più o meno uguale, uno spostamento della mappa e un'inclinazione producono lo stesso effetto. Nemmeno la simmetria delle strade separa le due cose sulle riprese satellitari, perché ombre e facciate inclinate coprono un lato della via.
+- **Colore delle facciate dalla foto.** Una facciata di sei piani occupa 4–8 pixel, e con gli errori residui la lettura finiva su tetti e strade. Sulla ripresa di Londra, che ha una dominante verde, i mattoni diventavano grigio-verdi. Le facciate restano disegnate.
 
 ### Banco di prova col LiDAR
 

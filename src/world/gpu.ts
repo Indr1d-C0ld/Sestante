@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial, PMREMGenerator, RenderPipeline, WebGPURenderer } from "three/webgpu";
-import { abs, cameraPosition, cameraViewMatrix, clamp, exp, float, Fn, getViewPosition, int, max, mix, mrt, normalView, output, pass, pmremTexture, positionWorld, screenUV, pow, select, smoothstep, texture, uniform, vec2, vec3, vec4 } from "three/tsl";
+import { abs, attribute, cameraPosition, cameraViewMatrix, clamp, exp, float, Fn, getViewPosition, int, max, mix, mrt, normalView, output, pass, pmremTexture, positionWorld, screenUV, pow, select, smoothstep, texture, uniform, vec2, vec3, vec4 } from "three/tsl";
 import { ao } from "three/addons/tsl/display/GTAONode.js";
 import { gaussianBlur } from "three/addons/tsl/display/GaussianBlurNode.js";
 import { CSMShadowNode } from "three/addons/csm/CSMShadowNode.js";
@@ -399,7 +399,8 @@ export class GpuView {
     const b = this.bridge;
     const m = new MeshStandardNodeMaterial({ roughness: 0.88, metalness: 0, side: source.side });
     m.colorNode = Fn(() => {
-      const { albedo } = this.plateAlbedo(positionWorld.xz, float(0));
+      const above = max(positionWorld.y.sub(attribute("aGround", "float")), 0);
+      const { albedo } = this.plateAlbedo(positionWorld.xz.add(b.value("uLean").mul(above)), float(0));
       const d = cameraPosition.sub(positionWorld).length();
       const n = b.sample("uNoise", positionWorld.xz.mul(0.47)).a;
       return albedo.mul(mix(float(1), n.mul(0.3).add(0.85), float(1).sub(smoothstep(15, 120, d)).mul(b.value("uDetail"))));

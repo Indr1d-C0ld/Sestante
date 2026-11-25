@@ -184,6 +184,13 @@ export type SheetStroke = { color: string; width: number; pts: number[]; route?:
 export type SheetLabel = { x: number; z: number; text: string; color: string };
 export type Sheet = { strokes: SheetStroke[]; labels: SheetLabel[] };
 
+/** Shift of the plate per metre of height, east (x) and south (z), measured on a survey or set by hand. */
+export type PlateLean = { x: number; z: number; source: "LiDAR" | "a mano"; detail: string; plate: string; at: string };
+
+/** One plate, named so that a lean set on it is not applied to another. */
+export const plateKey = (ref: PlateRef) =>
+  ref.kind === "wayback" ? `wayback:${ref.release}` : ref.kind === "tiles" ? `tiles:${ref.source}:${ref.date ?? ""}` : `upload:${ref.url}`;
+
 export type Expedition = {
   spec: FieldSpec;
   notes: Note[];
@@ -206,6 +213,8 @@ export type Expedition = {
   videos?: SavedVideo[];
   lidarReport?: LidarReport | null;
   benchReport?: BenchReport | null;
+  /** The satellite's lean for the plate named by `plate`: where it came from, and how well it lines up. */
+  lean?: PlateLean | null;
   thumb?: string;
   status?: "aperta" | "conclusa";
   /** Observations made in the Studio before anyone went down to the field. */

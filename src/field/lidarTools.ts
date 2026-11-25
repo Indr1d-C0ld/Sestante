@@ -1,6 +1,7 @@
 import { api, type LidarOffer } from "../core/api.ts";
 import type { BenchReport, LidarReport } from "../core/types.ts";
 import { castShadows, fitSunAltitude, maskScore, resampleMask, type SurfaceGrid } from "../vision/bench.ts";
+import { leanFromSurface, type Lean } from "../vision/lean.ts";
 import { errorStats } from "../vision/laser.ts";
 import { fillGaps, hillshade, localRelief, standingHeight, type ReliefGrid, type StandingHeight } from "../vision/lidar.ts";
 import type { Building } from "./load.ts";
@@ -239,4 +240,32 @@ export async function benchmark(engine: Engine, offer: LidarOffer): Promise<Benc
     canopyClear: maskScore(canopyFound, tall, clearOf(built, cols, rows, Math.max(1, Math.round(4 / step)))),
     sun: { used: a.sun.altitude, method: a.sun.method, best: fit.altitude, iouUsed: shadow.iou, iouBest: fit.iou, reliable: !a.shadowsWeak && !fit.atEdge },
   };
+}
+
+/**
+ * The plate's lean from the survey: surface steps projected with each candidate lean onto the plate's edges. One metre
+ * cells at most, as in the benchmark; the search takes some fifteen seconds on a 600 m box.
+ */
+export async function measureLean(engine: Engine, offer: LidarOffer): Promise<Lean | null> {
+  const p = engine.data.projection;
+  const step = Math.max(offer.resolution, 1, (Math.max(p.halfX, p.halfZ) * 2) / 1024);
+  const cols = Math.round((p.halfX * 2) / step);
+  const rows = Math.round((p.halfZ * 2) / step);
+  const box = engine.data.spec.bbox;
+  const [dsm, dtm] = await Promise.all([api.lidarGrid(offer.id, "dsm", box, cols, rows), api.lidarGrid(offer.id, "dtm", box, cols, rows)]);
+  const ground = fillGaps(dtm, cols, rows).heights;
+  const heights = new Float32Array(cols * rows);
+  for (let k = 0; k < heights.length; k++) heights[k] = Number.isFinite(dsm[k]!) ? Math.max(0, dsm[k]! - ground[k]!) : 0;
+  // The plate on the same grid: drawn small, then read as luminance.
+  const small = document.createElement("canvas");
+  small.width = cols;
+  small.height = rows;
+  const ctx = small.getContext("2d", { willReadFrequently: true })!;
+  ctx.drawImage(engine.plate.canvas, 0, 0, cols, rows);
+  const px = ctx.getImageData(0, 0, cols, rows).data;
+  const lum = new Float32Array(cols * rows);
+  for (let k = 0; k < lum.length; k++) lum[k] = (0.299 * px[k * 4]! + 0.587 * px[k * 4 + 1]! + 0.114 * px[k * 4 + 2]!) / 255;
+  // Out of the event loop's way: the search is plain arithmetic, a pause lets the panel show that it started.
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  return leanFromSurface(lum, { heights, cols, rows, cell: (p.halfX * 2) / cols });
 }

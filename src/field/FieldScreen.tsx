@@ -3,7 +3,7 @@ import { api, canvasBlob, imageCanvas, type LidarOffer, type PlacePhoto } from "
 import { measureLeg, SURVEY_CLASSES } from "../core/fieldwork.ts";
 import { compassName, formatLatLon } from "../core/geo.ts";
 import { sunPosition } from "../core/solar.ts";
-import { plateLabel, type Expedition, type FieldSpec, type Hypothesis, type MapOverlay, type Note, type NoteKind, type PhotoPlacement, type Pin, type PlateRef, type PlateVersion, type SavedStudy } from "../core/types.ts";
+import { plateKey, plateLabel, type Expedition, type FieldSpec, type Hypothesis, type MapOverlay, type Note, type NoteKind, type PhotoPlacement, type Pin, type PlateRef, type PlateVersion, type SavedStudy } from "../core/types.ts";
 import type { ShadowPlate } from "../vision/shadowTest.ts";
 import { Engine, type Snapshot } from "../world/engine.ts";
 import { loadSettings, saveSettings, type Settings } from "../world/settings.ts";
@@ -197,6 +197,8 @@ export function FieldScreen({ expedition: initial, canvas, findings, study, onEx
         }
       }
       engine.setHypotheses(initial.hypotheses ?? []);
+      // A lean belongs to the plate it was set on: another plate starts upright.
+      if (initial.lean && initial.lean.plate === plateKey(data.plate.ref)) engine.setLean(initial.lean.x, initial.lean.z);
       if (initial.treeModel) {
         correctTrees(engine.plate.trees, initial.treeModel);
         engine.refreshTrees();
@@ -1745,6 +1747,7 @@ export function FieldScreen({ expedition: initial, canvas, findings, study, onEx
                   onSights={(rows) => engine.setSights(rows)}
                   onLidarReport={(lidarReport) => updateExpedition((e) => ({ ...e, lidarReport }), true)}
                   onBenchReport={(benchReport) => updateExpedition((e) => ({ ...e, benchReport }), true)}
+                  onLean={(lean) => updateExpedition((e) => ({ ...e, lean }), true)}
                   onUseLidarTerrain={() => {
                     applySettings({ ...settings, demSource: "lidar" });
                     location.href = `${location.pathname}?spedizione=${engine.data.spec.id}`;
