@@ -149,3 +149,12 @@ test("l'asfalto dà la sua soglia d'ombra solo se mostra due popolazioni", () =>
   assert.deepEqual(asphaltShadowLevel(one, roads), { level: null, enough: true });
   assert.equal(asphaltShadowLevel(two, undefined).enough, false);
 });
+
+test("un sole trovato al limite della ricerca è dichiarato tale", () => {
+  const grid = block();
+  const open = new Uint8Array(grid.cols * grid.rows).fill(1);
+  const inside = fitSunAltitude(grid, Math.PI, castShadows(grid, Math.PI, 0.6), open);
+  assert.equal(inside.atEdge, false);
+  // A mask that calls everything shadow is best matched by the lowest sun there is.
+  assert.equal(fitSunAltitude(grid, Math.PI, new Uint8Array(open), open).atEdge, true);
+});

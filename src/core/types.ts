@@ -169,7 +169,8 @@ export type BenchReport = {
   shadowFloors?: { n: number; held: number } | null;
   shadow: MaskScoreRow;
   canopy: MaskScoreRow;
-  sun: { used: number; method: string; best: number; iouUsed: number; iouBest: number };
+  /** `reliable` is false when the plate's shadows cannot say which sun fits them: weak shadows, or a fit at the end of the search. */
+  sun: { used: number; method: string; best: number; iouUsed: number; iouBest: number; reliable?: boolean };
 };
 
 /** A copy of the explorer left standing somewhere, as a scale bar in the world. */

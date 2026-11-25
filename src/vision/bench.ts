@@ -78,7 +78,8 @@ export function resampleMask(mask: ArrayLike<number>, width: number, height: num
   return out;
 }
 
-export type SunFit = { altitude: number; iou: number; tried: { altitude: number; iou: number }[] };
+/** `atEdge`: the best sun is the lowest or highest tried, so the true optimum, if any, lies outside the search. */
+export type SunFit = { altitude: number; iou: number; atEdge: boolean; tried: { altitude: number; iou: number }[] };
 
 /** The sun height whose laser-cast shadows best match the shadows found on the plate, at a known azimuth. */
 export function fitSunAltitude(grid: SurfaceGrid, sunAzimuth: number, found: ArrayLike<number>, valid: ArrayLike<number>, from = 0.14, to = 1.25, step = 0.035): SunFit {
@@ -89,5 +90,5 @@ export function fitSunAltitude(grid: SurfaceGrid, sunAzimuth: number, found: Arr
     tried.push({ altitude, iou });
     if (iou > best.iou) best = { altitude, iou };
   }
-  return { ...best, tried };
+  return { ...best, atEdge: best.altitude === tried[0]!.altitude || best.altitude === tried[tried.length - 1]!.altitude, tried };
 }

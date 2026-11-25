@@ -213,6 +213,6 @@ export async function benchmark(engine: Engine, offer: LidarOffer): Promise<Benc
     shadowFloors: floors ? { n: floors, held: floorsHeld } : null,
     shadow,
     canopy: maskScore(canopyFound, tall, unbuilt),
-    sun: { used: a.sun.altitude, method: a.sun.method, best: fit.altitude, iouUsed: shadow.iou, iouBest: fit.iou },
+    sun: { used: a.sun.altitude, method: a.sun.method, best: fit.altitude, iouUsed: shadow.iou, iouBest: fit.iou, reliable: !a.shadowsWeak && !fit.atEdge },
   };
 }

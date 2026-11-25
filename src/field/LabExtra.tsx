@@ -613,7 +613,9 @@ const deg = (radians: number) => `${((radians * 180) / Math.PI).toFixed(0)}°`;
 
 /** The reconstruction scored against the survey: what was found, what was there, and how much of the two coincides. */
 function BenchTable({ bench }: { bench: BenchReport }) {
-  const sunOff = Math.abs(bench.sun.best - bench.sun.used) > 0.12 && bench.sun.iouBest > bench.sun.iouUsed + 0.05;
+  // Reports saved before the flag existed count as reliable.
+  const sunKnown = bench.sun.reliable !== false;
+  const sunOff = sunKnown && Math.abs(bench.sun.best - bench.sun.used) > 0.12 && bench.sun.iouBest > bench.sun.iouUsed + 0.05;
   return (
     <div>
       <div className="section-title">Banco di prova: {bench.name}</div>
@@ -645,7 +647,10 @@ function BenchTable({ bench }: { bench: BenchReport }) {
         </tbody>
       </table>
       <p className={sunOff ? "small warn" : "small"}>
-        Sole usato a {deg(bench.sun.used)} sull'orizzonte ({bench.sun.method}); le ombre lette si spiegano meglio con {deg(bench.sun.best)}, sovrapposizione {pct(bench.sun.iouBest)}.
+        Sole usato a {deg(bench.sun.used)} sull'orizzonte ({bench.sun.method});{" "}
+        {sunKnown
+          ? `le ombre lette si spiegano meglio con ${deg(bench.sun.best)}, sovrapposizione ${pct(bench.sun.iouBest)}.`
+          : "su questa ripresa le ombre lette non bastano a dire quale sole le spiegherebbe meglio, quindi il confronto non dice nulla sulla data."}
         {sunOff && " La differenza è grande: la data della ripresa potrebbe non essere quella vera dello scatto."}
       </p>
       {(bench.heights.length > 0 || bench.shadowHeights) && (
