@@ -41,6 +41,8 @@ export type Building = {
   roofShape: string;
   /** Where the roof's shape comes from: the map, the plate's terracotta, a presumption from size, the laser, or nowhere. */
   roofFrom?: "mappa" | "colore" | "presunta" | "LiDAR" | "nessuna";
+  /** Hidden because the laser survey split it into parts of different heights (they carry the id with ":rilievo"). */
+  splitBySurvey?: boolean;
   /** The surveyed roof, heights above the ground, when the laser survey has been applied to this building. */
   roofGrid?: RoofGrid;
   roofHeight: number;

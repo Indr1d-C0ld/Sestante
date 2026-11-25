@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { CSM } from "three/addons/csm/CSM.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Building } from "../field/load.ts";
+import { familyId } from "../core/lidarParts.ts";
 import { PLATE_GLSL, PROJECT_GLSL, PROV_GLSL, shade } from "./shading.ts";
 import { distanceToRings, nearRectangle, STEEP_REACH, steepShape, surveyedRoof } from "../core/roofs.ts";
 
@@ -37,7 +38,7 @@ function wallColor(building: Building) {
   const kind = tags.building ?? "";
   if (kind === "industrial" || kind === "warehouse") return new THREE.Color(0xa6a59c);
   if (kind === "office" || kind === "commercial") return new THREE.Color(0xb6b8b2);
-  return new THREE.Color(PLASTER[Math.floor(hashString(building.id) * PLASTER.length)]!);
+  return new THREE.Color(PLASTER[Math.floor(hashString(familyId(building.id)) * PLASTER.length)]!);
 }
 
 /** 0 plaster with windows, 1 glazed curtain wall, 2 industrial panels, 3 arcaded stone, 4 plain ancient wall. */
@@ -538,7 +539,7 @@ export function buildBuildings(buildings: Building[], csm: CSM | null, cell = 26
 
   for (const building of buildings) {
     if (building.hidden) continue;
-    const seed = hashString(building.id);
+    const seed = hashString(familyId(building.id));
     const color = wallColor(building);
     color.multiplyScalar(0.88 + seed * 0.2);
     const style = wallStyle(building);

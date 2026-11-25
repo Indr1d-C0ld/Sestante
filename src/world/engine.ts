@@ -4,6 +4,7 @@ import { dirVector, moonPosition, sunPosition } from "../core/solar.ts";
 import type { Hypothesis, Pin } from "../core/types.ts";
 import type { Building, FieldData, PlateState } from "../field/load.ts";
 import { terrainSampler } from "../field/load.ts";
+import { familyId } from "../core/lidarParts.ts";
 import { Soundscape } from "./audio.ts";
 import { buildBuildings } from "./buildings.ts";
 import { buildFences, buildProps, buildRibbons, buildWater, Precipitation, type PlacedProp } from "./details.ts";
@@ -377,7 +378,7 @@ export class Engine {
       });
     }
     // On WebGPU each draw costs the processor more than the GPU time it saves by culling: one block for the whole box.
-    const built = buildBuildings(this.data.buildings.filter((building) => !this.absent.has(building.id)), this.csm, this.gpu ? 1e6 : 260);
+    const built = buildBuildings(this.data.buildings.filter((building) => !this.absent.has(familyId(building.id))), this.csm, this.gpu ? 1e6 : 260);
     this.buildingsGroup = built.group;
     this.world.add(built.group);
     this.syncCollisions();
@@ -385,7 +386,7 @@ export class Engine {
 
   private syncCollisions() {
     const s = this.settings;
-    this.query.setBuildings([...(s.showBuildings ? this.data.buildings.filter((building) => !this.absent.has(building.id)) : []), ...(s.showMasses ? this.plate.masses : [])]);
+    this.query.setBuildings([...(s.showBuildings ? this.data.buildings.filter((building) => !this.absent.has(familyId(building.id))) : []), ...(s.showMasses ? this.plate.masses : [])]);
   }
 
   /** Height changes and era changes both land here: geometry and collisions always agree. */

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { castShadows, fitSunAltitude, maskScore, resampleMask, type SurfaceGrid } from "../src/vision/bench.ts";
 import { describeLean, leanFrom, leanFromSurface } from "../src/vision/lean.ts";
+import { surveyedParts } from "../src/core/lidarParts.ts";
 import { distanceToRings, insideRings, nearRectangle, presumePitched, roofSurfaceAt, surveyedRoof } from "../src/core/roofs.ts";
 import { aboveLevels, storeyHeight } from "../src/core/storeys.ts";
 import { analyzePlate, asphaltShadowLevel, fillRing, greenCast, leafOn, shadowHeights, type Footprint } from "../src/vision/analyze.ts";
@@ -284,4 +285,31 @@ test("sotto la chioma di un albero 3D il suolo è ricostruito dai dintorni", () 
   assert.ok(r.gainMap[k + 3]! > 200, `alpha ${r.gainMap[k + 3]}`);
   // The fill is the grey around, not the crown's green.
   assert.ok(Math.abs(r.gainMap[k]! - r.gainMap[k + 1]!) < 25 && r.gainMap[k]! > 100, `${r.gainMap[k]} ${r.gainMap[k + 1]} ${r.gainMap[k + 2]}`);
+});
+
+test("un sedime con due ali di altezza diversa e un cortile diventa due parti, la più alta col cortile vuoto", () => {
+  const cols = 44;
+  const rows = 34;
+  const heights = new Float32Array(cols * rows);
+  const inside = new Uint8Array(cols * rows);
+  for (let j = 2; j < 32; j++) {
+    for (let i = 2; i < 42; i++) {
+      const k = j * cols + i;
+      inside[k] = 1;
+      heights[k] = i < 22 ? 20 + (j % 3) * 0.3 : 8;
+      if (i >= 8 && i < 14 && j >= 12 && j < 18) heights[k] = 0.2;
+    }
+  }
+  heights[5 * cols + 30] = 14; // a chimney on the low wing
+  const parts = surveyedParts({ heights, inside, cols, rows, x0: 0, z0: 0, cell: 1 });
+  assert.equal(parts.length, 2, JSON.stringify(parts.map((p) => [p.height, p.cells])));
+  const [tall, low] = parts.sort((a, b) => b.height - a.height);
+  assert.ok(Math.abs(tall!.height - 20.6) < 0.2 && Math.abs(low!.median - 8) < 0.01);
+  assert.equal(tall!.rings.length, 2);
+  assert.equal(low!.rings.length, 1);
+  // The tall wing's outline is the 20 x 30 rectangle, the courtyard a 6 x 6 hole.
+  const area = (r: number[]) => { let s = 0; for (let i = 0, j = r.length / 2 - 1; i < r.length / 2; j = i++) s += r[j * 2]! * r[i * 2 + 1]! - r[i * 2]! * r[j * 2 + 1]!; return Math.abs(s / 2); };
+  assert.equal(area(tall!.rings[0]!), 600);
+  assert.equal(area(tall!.rings[1]!), 36);
+  assert.equal(tall!.rings[0]!.length / 2, 4);
 });

@@ -14,6 +14,7 @@ import { finishTraverse, HOTBAR, localPressure, magneticInfo, swElapsed, surveyS
 import { LabPanel, type LabTab } from "./LabPanel.tsx";
 import { LayersPanel, type Drape } from "./LayersPanel.tsx";
 import { applyLidar, benchmark } from "./lidarTools.ts";
+import { SURVEY_PART } from "../core/lidarParts.ts";
 import { TimeTravel } from "./TimeTravel.tsx";
 import { absentIds, applyLaser, applyStrata, assessWorld, correctTrees, heightErrorsFrom, loadSpectrum, measureMass, plateDate, volumeOfBuilding } from "./research.ts";
 import { crownVolume, formatRange, formatVolume } from "../vision/volume.ts";
@@ -390,7 +391,7 @@ export function FieldScreen({ expedition: initial, canvas, findings, study, onEx
         LiDAR: "misurata dal rilievo laser nazionale",
       };
       const rows: [string, string][] = [
-        ["Tipo", tags["building"] && tags["building"] !== "yes" ? tags.building : tags["building:part"] ? "parte di edificio" : "edificio"],
+        ["Tipo", `${tags["building"] && tags["building"] !== "yes" ? tags.building : tags["building:part"] ? "parte di edificio" : "edificio"}${b.id.includes(SURVEY_PART) ? ", una delle parti che il rilievo laser vede ad altezze diverse" : ""}`],
         ["Altezza", `${b.height.toFixed(1)} m, ${(b.height / engine.settings.altEgoHeight).toFixed(1)} volte te`],
         ["Fonte altezza", describe[b.source]],
         ["Piani", b.levels ? String(b.levels) : "—"],

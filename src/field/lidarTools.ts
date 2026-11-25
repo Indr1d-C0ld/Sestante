@@ -2,7 +2,8 @@ import { api, type LidarOffer } from "../core/api.ts";
 import type { BenchReport, LidarReport } from "../core/types.ts";
 import { castShadows, fitSunAltitude, maskScore, resampleMask, type SurfaceGrid } from "../vision/bench.ts";
 import { leanFromSurface, type Lean } from "../vision/lean.ts";
-import { distanceToRings, nearRectangle, roofSurfaceAt, STEEP_REACH, steepShape, type RoofGrid } from "../core/roofs.ts";
+import { distanceToRings, insideRings, nearRectangle, roofSurfaceAt, STEEP_REACH, steepShape, type RoofGrid } from "../core/roofs.ts";
+import { familyId, SURVEY_PART, surveyedParts } from "../core/lidarParts.ts";
 
 const median = (values: number[]) => {
   const s = [...values].sort((a, b) => a - b);
@@ -91,6 +92,13 @@ export async function applyLidar(engine: Engine, offer: LidarOffer): Promise<Lid
   let changed = 0;
   let seen = 0;
   const built = new Uint8Array(cols * rows);
+  // Parts made by an earlier run of this, and the outlines they replaced, start over.
+  engine.data.buildings = engine.data.buildings.filter((b) => !b.id.includes(SURVEY_PART));
+  for (const b of engine.data.buildings) if (b.splitBySurvey) {
+    b.hidden = false;
+    b.splitBySurvey = false;
+  }
+  const added: Building[] = [];
   for (const { b, row, cells } of standingBuildings(engine, dsm, ground, cols, rows)) {
     for (const k of cells) built[k] = 1;
     if (row.coverage < 0.5 || row.height < 2) continue;
@@ -109,6 +117,18 @@ export async function applyLidar(engine: Engine, offer: LidarOffer): Promise<Lid
     const eave = rises[Math.floor(rises.length * 0.5)] ?? 0;
     // Only coherent roofs: ridge within 5 m of the median and the median at least 60% of the ridge. A footprint holding
     // a low annex and a tall wing, or a crane, turned into a rock; those keep the shape they had.
+    if (rises.length >= 12 && !(row.height - eave <= 5 && eave >= row.height * 0.6) && !b.isPart) {
+      // An outline holding parts of different heights: it gives way to the parts the survey sees.
+      const parts = splitByParts(b, dsm, ground, cols, rows, cellX, cellZ, p.halfX, p.halfZ);
+      // One part alone would only trade the map's outline for the survey's coarser one.
+      if (parts.length >= 2) {
+        b.hidden = true;
+        b.splitBySurvey = true;
+        added.push(...parts);
+        changed++;
+        continue;
+      }
+    }
     if (rises.length >= 12 && row.height - eave <= 5 && eave >= row.height * 0.6) {
       b.roofHeight = Math.max(0, row.height - eave);
       b.roofGrid = roofPatch(b.rings[0]!, dsm, ground, cols, rows, cellX, cellZ, p.halfX, p.halfZ);
@@ -118,6 +138,7 @@ export async function applyLidar(engine: Engine, offer: LidarOffer): Promise<Lid
     if (b.levels) b.levels = Math.max(1, Math.round((row.height - b.roofHeight) / 3.2));
     changed++;
   }
+  engine.data.buildings.push(...added);
   engine.refreshBuildings();
   const trees = surveyTrees(engine, dsm, ground, built, cols, rows);
   tallest.sort((a, b) => b.measured - a.measured);
@@ -130,6 +151,7 @@ export async function applyLidar(engine: Engine, offer: LidarOffer): Promise<Lid
     bySource: [...differences].map(([label, errors]) => errorStats(label, errors)).sort((a, b) => b.n - a.n),
     tallest: tallest.slice(0, 8),
     trees,
+    parts: added.length ? { outlines: new Set(added.map((b) => familyId(b.id))).size, parts: added.length } : undefined,
   };
 }
 
@@ -224,6 +246,46 @@ function treesOnTall(engine: Engine, dsm: ArrayLike<number>, ground: ArrayLike<n
     if (top > 3) tall++;
   }
   return n ? { n, onTall: tall / n } : null;
+}
+
+/**
+ * One footprint split into the parts the survey sees: wings, annexes, with courtyards left open. Each part stands as a
+ * building of its own (a part, as OpenStreetMap's building:part), with the parent's colour and tags, its own height, and
+ * the surveyed roof when its roof is coherent, else a flat top at its median height.
+ */
+function splitByParts(b: Building, dsm: ArrayLike<number>, ground: ArrayLike<number>, cols: number, rows: number, cellX: number, cellZ: number, halfX: number, halfZ: number): Building[] {
+  const patch = roofPatch(b.rings[0]!, dsm, ground, cols, rows, cellX, cellZ, halfX, halfZ);
+  const inside = new Uint8Array(patch.cols * patch.rows);
+  for (let j = 0; j < patch.rows; j++) {
+    for (let i = 0; i < patch.cols; i++) inside[j * patch.cols + i] = insideRings(patch.x0 + i * patch.cell, patch.z0 + j * patch.cell, b.rings) ? 1 : 0;
+  }
+  const parts = surveyedParts({ heights: patch.heights, inside, cols: patch.cols, rows: patch.rows, x0: patch.x0 - patch.cell / 2, z0: patch.z0 - patch.cell / 2, cell: patch.cell });
+  if (!parts.length) return [];
+  const ground0 = b.top - b.height;
+  return parts.map((part, index) => {
+    const coherent = part.height - part.median <= 5;
+    const area = part.cells * patch.cell * patch.cell;
+    const height = coherent ? part.height : part.median;
+    return {
+      ...b,
+      id: `${b.id}${SURVEY_PART}${index}`,
+      rings: part.rings,
+      height,
+      top: ground0 + height,
+      source: "LiDAR",
+      confidence: 0.95,
+      levels: Math.max(1, Math.round(part.median / 3.2)),
+      roofShape: coherent ? "rilevato" : "flat",
+      roofFrom: "LiDAR",
+      roofHeight: coherent ? Math.max(0, part.height - part.median) : 0,
+      roofGrid: coherent ? patch : undefined,
+      isPart: true,
+      hidden: false,
+      area,
+      minHeight: 0,
+      splitBySurvey: false,
+    } satisfies Building;
+  });
 }
 
 /** The survey around one footprint, as heights above the ground, one cell beyond its bounds. */

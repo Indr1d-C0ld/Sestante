@@ -536,7 +536,8 @@ export function LidarTab(props: LabProps) {
                   const row = await applyLidar(engine, offer);
                   onLidarReport(row);
                   const treeLine = row.trees ? ` Alberi: ${row.trees.measured} con l'altezza del laser, ${row.trees.removed} letti dalla ripresa tolti perché il laser lì non vede nulla sopra i 3 m (il rilievo ha una data sua: un albero piantato dopo non c'è).` : "";
-                  addNote("sistema", `Il LiDAR ha fissato ${row.changed} altezze`, `${row.name}: ${row.seen} edifici visti. Le altezze scritte sulla mappa restano, per poterle confrontare.${treeLine}`, { instrument: "LiDAR" });
+                  const partLine = row.parts ? ` ${row.parts.outlines} sedimi contenevano corpi di altezze diverse (ali, annessi bassi, corti) e sono stati divisi nelle ${row.parts.parts} parti che il laser vede, ciascuna con la sua altezza; le corti restano aperte.` : "";
+                  addNote("sistema", `Il LiDAR ha fissato ${row.changed} altezze`, `${row.name}: ${row.seen} edifici visti. Le altezze scritte sulla mappa restano, per poterle confrontare.${partLine}${treeLine}`, { instrument: "LiDAR" });
                 })
               }
             >
@@ -568,7 +569,7 @@ export function LidarTab(props: LabProps) {
         <div>
           <div className="section-title">Altezze dal rilievo: {report.name}</div>
           <p className="small">
-            {report.seen} edifici misurati, {report.changed} altezze sostituite. Le altezze scritte sulla mappa non vengono toccate.{report.trees ? ` Alberi: ${report.trees.measured} misurati, ${report.trees.removed} tolti perché il laser lì non vede nulla di alto.` : ""}
+            {report.seen} edifici misurati, {report.changed} altezze sostituite. Le altezze scritte sulla mappa non vengono toccate.{report.parts ? ` ${report.parts.outlines} sedimi divisi in ${report.parts.parts} parti ad altezze diverse.` : ""}{report.trees ? ` Alberi: ${report.trees.measured} misurati, ${report.trees.removed} tolti perché il laser lì non vede nulla di alto.` : ""}
           </p>
           <table className="data">
             <thead>
