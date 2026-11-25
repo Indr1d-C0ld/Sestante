@@ -754,7 +754,8 @@ export function analyzePlate(input: AnalysisInput): AnalysisResult {
       : { h: null, confidence: 0, rays: 0 };
     // Where shadows cannot be told from dark asphalt a reading is a hint: the neighbourhood's heights are the safer guess.
     if (shadowsWeak) heights[fp.id]!.confidence *= 0.4;
-    if (raw?.floor) heights[fp.id]!.atLeast = Math.min(320, raw.floor * tan);
+    // A floor must err low: of the sun's own slope and the one tuned on mapped heights, the gentler.
+    if (raw?.floor) heights[fp.id]!.atLeast = Math.min(320, raw.floor * Math.min(tan, Math.tan(Math.max(0.09, sun.altitude))));
     if (raw?.length) readHeights.push(raw.length * tan);
     const ring = fp.rings[0]!;
     let cx = 0;

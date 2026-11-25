@@ -108,7 +108,7 @@ export type HeightError = { typical: number; shared: number; basis: string };
  */
 const HEIGHT_ERRORS: Record<string, HeightError> = {
   "OSM height": { typical: 2, shared: 1, basis: "presunto: troppe poche misure per stimarlo" },
-  "OSM piani": { typical: 5.2, shared: 4.5, basis: "misurato col laser a Prati" },
+  "OSM piani": { typical: 2.2, shared: 1.3, basis: "misurato col LiDAR a Parigi, Londra e Zurigo, sugli stessi edifici che hanno tarato il tetto tipico" },
   LiDAR: { typical: 1, shared: 0.3, basis: "presunto: precisione dichiarata dei rilievi nazionali" },
   "laser GEDI": { typical: 2.5, shared: 1.2, basis: "presunto: precisione del disco e del punto" },
   "ombre multi-data": { typical: 2.9, shared: 0.7, basis: "misurato col laser a Prati" },

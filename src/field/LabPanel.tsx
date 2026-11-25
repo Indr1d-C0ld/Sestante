@@ -1094,7 +1094,7 @@ function Water({ engine, flood, onFlood, addNote }: LabProps) {
 
 const SOURCE_DETAIL: [string, string][] = [
   ["OSM height", "Altezza scritta nella mappa"],
-  ["OSM piani", "Piani scritti nella mappa × 3,2 m"],
+  ["OSM piani", "Piani scritti nella mappa × 3,2 m, più tetto e basamento tipici (da 1 a 3 m, misurati col laser)"],
   ["laser GEDI", "Misurata dal laser GEDI"],
   ["ombre multi-data", "Ombre di più riprese"],
   ["ombra", "Ombra di una ripresa"],

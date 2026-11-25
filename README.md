@@ -4,7 +4,7 @@
 ![Node 24 o più recente](https://img.shields.io/badge/node-24-339933?logo=node.js&logoColor=white)
 ![three.js](https://img.shields.io/badge/three.js-r187-black?logo=three.js)
 ![WebGL2](https://img.shields.io/badge/WebGL-2-990000?logo=webgl&logoColor=white)
-![Test](https://img.shields.io/badge/test-101-success)
+![Test](https://img.shields.io/badge/test-114-success)
 
 Scegli un riquadro di Terra. Sestante ne legge la ripresa satellitare, la ricostruisce in 3D e ti ci fa camminare dentro in prima persona, con la borsa di strumenti di un ricercatore sul campo e un registro che si scrive da solo.
 
@@ -39,7 +39,7 @@ Non è un visore di mappe: è un banco di lavoro. Ogni altezza dichiara da dove 
 | ![LiDAR](docs/screenshots/lidar.jpg) **LiDAR nazionale.** Stonehenge nel rilievo locale: il fossato e i tumuli che sulla foto si vedono appena. | ![Vie antiche](docs/screenshots/vie.jpg) **Vie antiche.** Il Gran San Bernardo: due vie di minor fatica e il corridoio delle alternative. |
 | ![Indagine](docs/screenshots/indagine.jpg) **Indagine.** "Cosa c'è di strano qui?": luoghi da visitare da indizi indipendenti, con le fonti saltate. | ![Fascicolo](docs/screenshots/fascicolo.jpg) **Fascicolo.** Prove a favore, contro e neutre di un'ipotesi, con rapporto esportabile. |
 | ![Viaggio nel tempo](docs/screenshots/viaggio.jpg) **Viaggio nel tempo.** Un cursore fra gli scatti dal 2011 al 2025, con la camera in orbita, esportabile in video. | ![Laser](docs/screenshots/laser.jpg) **Laser GEDI.** Quanto sbaglia ogni fonte di altezza, misurato da un laser sulla Stazione Spaziale. |
-| ![Archivio](docs/screenshots/archivio.jpg) **Archivio.** Ogni indagine, con i suoi studi, ricerca nel testo, cestino ed esportazione. | |
+| ![Archivio](docs/screenshots/archivio.jpg) **Archivio.** Ogni indagine, con i suoi studi, ricerca nel testo, cestino ed esportazione. | ![Banco di prova](docs/screenshots/banco.jpg) **Banco di prova.** Zurigo: ombre, chiome e altezze lette dalla ripresa, confrontate col LiDAR nazionale fonte per fonte. |
 
 Immagini di sfondo nelle schermate: Esri, Maxar, Earthstar Geographics e la comunità degli utenti GIS, tramite Esri World Imagery e Wayback. Dati degli edifici © OpenStreetMap contributors. Rilievo laser di Stonehenge: Environment Agency, Open Government Licence.
 
@@ -301,7 +301,7 @@ Le legge solo il server: non arrivano mai al browser, non finiscono nei salvatag
 | --- | --- | --- | --- |
 | Ombre di più riprese | 42 | −0,7 m | 2,9 m |
 | Ombra di una sola ripresa (lettura precedente) | 21 | −2,6 m | 5,0 m |
-| Piani scritti nella mappa × 3,2 m | 10 | −4,5 m | 5,2 m |
+| Piani scritti nella mappa × 3,2 m, prima che vi si aggiungessero tetto e basamento | 10 | −4,5 m | 5,2 m |
 
 I gruppi di edifici non sono identici e il campione è piccolo: sono ordini di grandezza, non una statistica. GEDI riporta le quote sull'ellissoide: il riferimento locale si ricava dalla quota SRTM allegata alle impronte, perché il terreno di Sestante, sotto un parco, poggia sulle chiome. Il laser ha i suoi limiti: il disco è di 25 m, e la cima può venire da un vicino. Sul solo riquadro del Colosseo le impronte buone su edifici sono appena 10. Ogni riquadro calcola la propria tabella nel Laboratorio. Anche gli edifici possono cambiare fra la data del laser e quella della lastra.
 
@@ -399,7 +399,7 @@ Ogni strumento è stato provato dove la risposta esiste già. I test automatici 
 | Strumento | Caso | Risultato |
 | --- | --- | --- |
 | Altezze dalle ombre, più date | GEDI a Prati, Roma | Errore tipico 2,9 m, tendenza −0,7 m, su 42 impronte |
-| Altezze dai piani OSM | GEDI a Prati | Errore tipico 5,2 m, tendenza −4,5 m, su 10 impronte |
+| Altezze dai piani OSM | GEDI a Prati, poi LiDAR a Parigi, Londra e Zurigo | A Prati 5,2 m, tendenza −4,5 m, su 10 impronte. Con tetto e basamento aggiunti: da 1,4 a 2,2 m, tendenza da −0,2 a −1,3 m, su 879 edifici, gli stessi usati per ricavare la correzione |
 | Altezza di una singola chioma | GEDI, tre zone di Roma | Correlazione circa zero: una foto dall'alto non la dà. Corretta per gruppi: da 9,4 a 5,9 m a Prati, su orbite escluse |
 | Intervallo delle altezze | GEDI, tre zone di Roma | 48 impronte su 54 dentro l'intervallo |
 | Volume da pianta e altezza | Piramide di Cheope | 2,42 milioni di m³ (2,33–2,51) contro 2,45 geometrici |
@@ -435,16 +435,27 @@ Quattro riquadri di 600 m, celle di 1 m, novembre 2026:
 
 | Luogo | Letture, prima | Scarto tipico, tendenza | Letture, ora | Scarto tipico, tendenza | Contro il tetto a metà | Minime confermate dal laser |
 | --- | --- | --- | --- | --- | --- | --- |
-| Amsterdam | 176 | 3,2 m, −1,2 m | 156 | 3,1 m, +0,1 m | 3,4 m, +2,0 m | 111 su 130 |
-| Parigi | 65 | 5,1 m, −1,9 m | 146 | 7,8 m, −6,6 m | 6,0 m, −2,2 m | 142 su 156 |
-| Londra | 133 | 4,9 m, −4,6 m | 196 | 4,7 m, −2,0 m | 4,0 m, +0,1 m | 93 su 124 |
-| Zurigo | 187 | 9,2 m, −9,2 m | 193 | 3,9 m, −3,9 m | 1,9 m, −1,2 m | 211 su 214 |
+| Amsterdam | 176 | 3,2 m, −1,2 m | 156 | 3,1 m, +0,4 m | 3,6 m, +2,2 m | 107 su 130 |
+| Parigi | 65 | 5,1 m, −1,9 m | 146 | 7,4 m, −4,4 m | 6,9 m, −0,7 m | 149 su 156 |
+| Londra | 133 | 4,9 m, −4,6 m | 196 | 4,2 m, +0,1 m | 4,3 m, +2,3 m | 121 su 124 |
+| Zurigo | 187 | 9,2 m, −9,2 m | 193 | 2,4 m, −1,8 m | 2,6 m, +0,8 m | 211 su 214 |
 
-  Il laser misura fino al colmo, mentre un'ombra nasce dalla gronda: una prova fatta dando alla lettura le ombre del laser stesso conferma che un'ombra può misurare il livello a metà del tetto, non il colmo. Contro quel livello Zurigo sta entro 1,9 m e Londra non ha più tendenza; contro il colmo resta, nei tetti a falde, uno scarto di due-quattro metri che non è un errore di lettura. Lo stesso vale per le altezze dedotte dai piani, che in tutti e quattro i riquadri stanno 2-3 m sotto il colmo.
+  Il laser misura fino al colmo, mentre un'ombra nasce dalla gronda: una prova fatta dando alla lettura le ombre del laser stesso conferma che un'ombra, da sola, misura il livello a metà del tetto. Le letture però sono tarate sugli edifici di altezza nota, e da quando le altezze dai piani comprendono tetto e basamento (voce seguente) la taratura le porta verso il colmo.
+
+- **Altezze dai piani.** Piani × 3,2 m stava sotto il colmo in tutti i riquadri: −2,0 m a Parigi, −2,8 m a Londra, −3,2 m a Zurigo, e già −4,5 m col laser GEDI a Prati. Non è un errore di chi ha mappato: i piani contati non comprendono il tetto, il parapetto e il piano terra più alto. Su 887 edifici il colmo sta 3-4 m sopra fino a cinque piani, 2 m a sei, 1 m da sette in su; dove anche i piani del tetto sono mappati restano 2-3 m. Ora questa parte viene aggiunta quando la mappa non dice nulla del tetto, ed è dichiarata nella scheda dell'edificio.
+
+| Luogo | Edifici | Piani × 3,2 m: scarto tipico, tendenza | Con tetto e basamento |
+| --- | --- | --- | --- |
+| Parigi | 369 | 2,2 m, −2,0 m | 1,4 m, −0,2 m |
+| Londra | 382 | 2,9 m, −2,8 m | 2,2 m, −0,3 m |
+| Zurigo | 128 | 3,4 m, −3,2 m | 1,7 m, −1,3 m |
+
+  La correzione è stata ricavata e misurata sugli stessi edifici: questi numeri dicono che descrive bene quei tre quartieri, non che valga altrove. Sono città europee con tetti a falde o mansarde; dove i tetti sono terrazze piane aggiunge circa due metri di troppo, e la misura di Prati, fatta prima, non è stata ripetuta. Ne beneficiano anche le stime per quartiere (a Zurigo da 4,5 m a 3,2 m di scarto tipico) e le letture dalle ombre, che su quegli edifici si tarano.
+- **Altezze minime.** Un minimo deve sbagliare per difetto: usa la pendenza più bassa fra quella del sole e quella tarata. Il laser lo conferma in 588 casi su 624.
 
 - **Dominante di colore.** Le lastre di Parigi e Londra sono verdastre: l'indice di verde dell'asfalto valeva 0,14 e 0,10 contro 0,02 ad Amsterdam, e circa il 60% dei pixel passava per vegetazione, strade comprese. Ora la dominante si misura su strade e tetti mappati, che vegetazione non sono, fascia per fascia di luminosità, e si sottrae. A Parigi la vegetazione scende dal 62 al 25% della lastra, la direzione letta del sole passa da 137° a 148° (il laser indica circa 153°) e il sole letto dagli edifici da 58° a 45°.
 - **Asfalto.** Sulle strade mappate la soglia d'ombra viene dall'istogramma dell'asfalto stesso, se mostra due popolazioni separate da una valle. A Londra l'asfalto al sole è scuro quanto altrove l'ombra e la soglia generale lo scambiava per ombra: con la sua, gli edifici che prendono l'altezza dall'ombra passano da uno scarto tipico di 4,6 m a 2,9 m.
-- **Parigi resta il caso difficile.** Lì asfalto al sole e in ombra hanno la stessa luminosità, e la lastra è inclinata di una ventina di gradi: non c'è valle, la lastra viene dichiarata "a ombre deboli", le letture perdono fiducia e gli edifici senza altezza mappata prendono quella del quartiere (scarto tipico 4,1 m, senza tendenza) invece di quella dell'ombra (7,8 m). Le singole letture non sono migliorate. Su quella lastra nemmeno il sole che spiega meglio le ombre si può determinare: il banco di prova lo dichiara e non mette in dubbio la data per questo.
+- **Parigi resta il caso difficile.** Lì asfalto al sole e in ombra hanno la stessa luminosità, e la lastra è inclinata di una ventina di gradi: non c'è valle, la lastra viene dichiarata "a ombre deboli", le letture perdono fiducia e gli edifici senza altezza mappata prendono quella del quartiere (scarto tipico 3,7 m, tendenza +2,8 m) invece di quella dell'ombra (7,4 m). Le singole letture non sono migliorate. Su quella lastra nemmeno il sole che spiega meglio le ombre si può determinare: il banco di prova lo dichiara e non mette in dubbio la data per questo.
 
 Il rilievo ha una data sua, diversa da quella della lastra: cantieri e alberi cresciuti abbassano i punteggi senza che la lettura sia sbagliata.
 
