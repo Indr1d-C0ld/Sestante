@@ -266,3 +266,22 @@ test("il tetto dal rilievo sta dentro la pianta, ne copre l'area e prende le quo
   assert.ok(ridge.length > 3 && ridge.every((y) => y > 14), JSON.stringify(ridge));
   assert.ok(roof.ys.every((y) => y >= 12 && y <= 15));
 });
+
+test("sotto la chioma di un albero 3D il suolo è ricostruito dai dintorni", () => {
+  const w = 80;
+  const h = 80;
+  const rgba = new Uint8ClampedArray(w * h * 4);
+  for (let k = 0; k < w * h; k++) {
+    const x = k % w;
+    const y = Math.floor(k / w);
+    const crown = (x - 40) ** 2 + (y - 40) ** 2 < 36;
+    rgba.set(crown ? [30, 70, 25, 255] : [140, 140, 130, 255], k * 4);
+  }
+  const r = analyzePlate({ rgba, width: w, height: h, mpp: 1, lat: 45, lon: 7, captureDate: null, footprints: [], roads: [], water: [], osmTrees: [{ x: 40, y: 40, tags: { natural: "tree" } }], register: false });
+  assert.ok(r.trees.length >= 1);
+  assert.ok(r.stats.crownGround > 0);
+  const k = (40 * w + 40) * 4;
+  assert.ok(r.gainMap[k + 3]! > 200, `alpha ${r.gainMap[k + 3]}`);
+  // The fill is the grey around, not the crown's green.
+  assert.ok(Math.abs(r.gainMap[k]! - r.gainMap[k + 1]!) < 25 && r.gainMap[k]! > 100, `${r.gainMap[k]} ${r.gainMap[k + 1]} ${r.gainMap[k + 2]}`);
+});

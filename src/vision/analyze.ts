@@ -71,7 +71,8 @@ export type AnalysisResult = {
   classMap: Uint8Array;
   /** RGB holds what the ground would look like without baked shadows, A how much of it to use. */
   gainMap: Uint8Array;
-  stats: { canopy: number; lawn: number; shadow: number; water: number; paved: number; shadowRatioR: number; shadowRatioG: number; shadowRatioB: number };
+  /** `crownGround`: square metres of ground under 3D crowns, rebuilt from their surroundings. */
+  stats: { canopy: number; lawn: number; shadow: number; water: number; paved: number; crownGround: number; shadowRatioR: number; shadowRatioG: number; shadowRatioB: number };
 };
 
 type Grid = { w: number; h: number };
@@ -874,11 +875,31 @@ export function analyzePlate(input: AnalysisInput): AnalysisResult {
   lit = [];
   shade = [];
 
+  // From above, the ground under a crown is the crown. Where a tree now stands in 3D, that ground is rebuilt from what
+  // lies around it, as shadows are: the plate's leaves would otherwise lie flat under the tree's own leaves.
+  const crowns = new Uint8Array(n);
+  let crownCount = 0;
+  for (const tree of trees) {
+    const cx = tree.x / mpp;
+    const cy = tree.y / mpp;
+    const r = (tree.r * 0.95) / mpp;
+    for (let y = Math.max(0, Math.floor(cy - r)); y <= Math.min(h - 1, Math.ceil(cy + r)); y++) {
+      for (let x = Math.max(0, Math.floor(cx - r)); x <= Math.min(w - 1, Math.ceil(cx + r)); x++) {
+        const k = y * w + x;
+        if ((x - cx) ** 2 + (y - cy) ** 2 > r * r || built[k] || water[k] || crowns[k]) continue;
+        crowns[k] = 1;
+        crownCount++;
+      }
+    }
+  }
+  const hole = new Uint8Array(n);
+  for (let i = 0; i < n; i++) hole[i] = shadowWide[i]! || crowns[i]! ? 1 : 0;
+
   // Shadows are filled from their sunlit surroundings: below the noise floor a dark pixel holds no colour worth amplifying.
   const soft = new Float32Array(n);
-  for (let i = 0; i < n; i++) soft[i] = shadowWide[i]! && !water[i] ? 1 : 0;
+  for (let i = 0; i < n; i++) soft[i] = (shadowWide[i]! && !water[i]) || crowns[i] ? 1 : 0;
   const softT = integral(soft, grid);
-  const fill = pushPull(rgba, shadowWide, grid);
+  const fill = pushPull(rgba, hole, grid);
   // A penumbra is about a metre wide: a hard mask edge would leave a dark rim on one side and a bright one on the other.
   const feather = Math.max(1, Math.round(0.7 / mpp));
   const classMap = new Uint8Array(n * 4);
@@ -926,6 +947,7 @@ export function analyzePlate(input: AnalysisInput): AnalysisResult {
       lawn: (lawnCount * mpp * mpp) | 0,
       shadow: (shadowCount * mpp * mpp) | 0,
       water: (waterCount * mpp * mpp) | 0,
+      crownGround: (crownCount * mpp * mpp) | 0,
       paved: (pavedCount * mpp * mpp) | 0,
       shadowRatioR: ratio[0],
       shadowRatioG: ratio[1],

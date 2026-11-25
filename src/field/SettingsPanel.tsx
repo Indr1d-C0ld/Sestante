@@ -285,7 +285,7 @@ export function SettingsPanel({ engine, settings, onChange, onClose, onShotDay, 
                 <Check label="Muri e recinzioni" value={settings.showFences} onChange={(v) => set("showFences", v)} />
                 <Check label="Acque" value={settings.showWater} onChange={(v) => set("showWater", v)} />
                 <Check label="Terra attorno alla ripresa" note="Mosaico a bassa risoluzione fino all'orizzonte" value={settings.farField} onChange={(v) => set("farField", v)} />
-                <Check label="Togli le ombre dalla foto" note="Corregge le ombre incise nella lastra, per lasciare spazio a quelle vere" value={settings.deshadow} onChange={(v) => set("deshadow", v)} />
+                <Check label="Togli le ombre dalla foto" note="Corregge le ombre incise nella lastra, per lasciare spazio a quelle vere, e ricostruisce dai dintorni il suolo sotto le chiome degli alberi 3D" value={settings.deshadow} onChange={(v) => set("deshadow", v)} />
                 <Slider label="Dettaglio ravvicinato del suolo" value={settings.detail} min={0} max={1} step={0.05} onChange={(v) => set("detail", v)} />
                 <Check label="Griglia di 100 m sul suolo" value={settings.gridOverlay} onChange={(v) => set("gridOverlay", v)} />
                 <label className="setting">

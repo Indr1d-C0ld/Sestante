@@ -4,7 +4,7 @@
 ![Node 24 o più recente](https://img.shields.io/badge/node-24-339933?logo=node.js&logoColor=white)
 ![three.js](https://img.shields.io/badge/three.js-r187-black?logo=three.js)
 ![WebGL2](https://img.shields.io/badge/WebGL-2-990000?logo=webgl&logoColor=white)
-![Test](https://img.shields.io/badge/test-121-success)
+![Test](https://img.shields.io/badge/test-122-success)
 
 Scegli un riquadro di Terra. Sestante ne legge la ripresa satellitare, la ricostruisce in 3D e ti ci fa camminare dentro in prima persona, con la borsa di strumenti di un ricercatore sul campo e un registro che si scrive da solo.
 
@@ -68,7 +68,7 @@ Poi apri http://localhost:4173. Senza chiavi funziona già tutto ciò che usa fo
 | --- | --- |
 | `npm start` | Server di produzione sulla porta 4173, con la build in `dist/` |
 | `npm run dev` | Sviluppo con Vite e ricarica a caldo (usa anche la porta successiva) |
-| `npm test` | I 121 test, su scene sintetiche di cui si conosce la verità |
+| `npm test` | I 122 test, su scene sintetiche di cui si conosce la verità |
 | `npm run typecheck` | Controllo dei tipi |
 
 Variabili d'ambiente: `PORT` per la porta, `SESTANTE_DATA` per la cartella dei dati (predefinita `data/` nel progetto). Il server ascolta solo su `127.0.0.1`.
@@ -419,6 +419,7 @@ Ogni numero dichiara la sua fonte. La scheda di un edificio dice se l'altezza è
 | Sole dello scatto | Direzione delle ombre attorno agli edifici più data di acquisizione: ne esce l'istante dello scatto. Se almeno dieci edifici di altezza nota indicano un sole lontano più di 24° da quello della data, la data è messa in dubbio e vale il sole letto dagli edifici |
 | Vegetazione e ombre su lastre con dominante | Il verde in eccesso di strade e tetti mappati è la dominante della lastra e viene tolto prima di classificare. Sull'asfalto mappato decide la sua soglia, se sole e ombra formano due popolazioni; altrimenti la lastra è segnalata come "a ombre deboli" |
 | Altezze mancanti | Lunghezza dell'ombra × tangente del sole, tarata sugli edifici di altezza nota. Un'ombra fermata dal palazzo di fronte dà solo un'altezza minima, indicata come tale nella scheda dell'edificio. Con tutte le riprese lette: mediana pesata fra più date, con margine d'errore. Un'altezza scritta sulla mappa non viene mai sovrascritta |
+| Suolo sotto le chiome | Dall'alto si vede solo la chioma. Dove ora sta un albero 3D, il suolo sotto è ricostruito dai dintorni come le ombre tolte: prato, vialetto o asfalto, secondo ciò che lo circonda. La prima nota dell'indagine dice quanti metri quadrati sono ricostruiti; è un'ipotesi, non un'osservazione |
 | Alberi | Chiome individuate sulla lastra, altezza dall'ombra, colore dal pixel; alberi OSM con specie dove esistono. Con la rete FLAIR installata, le sue chiome si aggiungono a quelle delle regole, che vengono tolte dove la rete vede edifici o acqua e, sulle riprese in foglia, asfalto |
 | Edifici non mappati | Tetto compatto con la propria ombra, solo se nessun edificio mappato spiega quell'ombra |
 | Acqua | Poligoni OSM, più le aree grandi, lisce, piatte sul DEM e bluastre |
