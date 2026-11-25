@@ -689,6 +689,11 @@ function BenchTable({ bench }: { bench: BenchReport }) {
           </tbody>
         </table>
       )}
+      {bench.trees && (
+        <p className="small">
+          Alberi letti dalla ripresa: {bench.trees.n}, di cui {pct(bench.trees.onTall)} stanno su qualcosa che il rilievo vede più alto di 3 m. Gli altri sono probabilmente siepi, prati scuri od ombre.
+        </p>
+      )}
       {bench.roofSurface && (
         <p className="small">
           Superficie dei tetti, su {bench.roofSurface.n} edifici: in media dista {bench.roofSurface.model.toFixed(2)} m dal rilievo, contro {bench.roofSurface.flat.toFixed(2)} m di un tetto piatto alla stessa altezza.

@@ -853,7 +853,16 @@ export function analyzePlate(input: AnalysisInput): AnalysisResult {
     }
   }
 
-  const trees = detectTrees(rgba, grid, mpp, canopyMask, shadow, built, shadowAz, tan, input.osmTrees);
+  // Small crowns are mostly not trees: under 2 m of radius the laser found something taller than 3 m beneath only one
+  // in three, in four cities. They are dropped unless the network sees a tree there or the map puts one; the canopy
+  // they covered was small, and the laser-checked cover changed by at most three points.
+  const trees = detectTrees(rgba, grid, mpp, canopyMask, shadow, built, shadowAz, tan, input.osmTrees).filter((tree) => {
+    if (tree.source === "osm" || tree.r >= 2) return true;
+    if (!cover || cover.length !== n) return false;
+    const k = Math.min(h - 1, Math.max(0, Math.round(tree.y / mpp))) * w + Math.min(w - 1, Math.max(0, Math.round(tree.x / mpp)));
+    const c = cover[k]!;
+    return c === FLAIR.coniferous || c === FLAIR.deciduous || c === FLAIR.brushwood;
+  });
   const masses = input.footprints.length < 8000 ? detectMasses(rgba, grid, mpp, shadow, built, veg, road, water, lum, shadowAz, tan) : [];
 
   // Per-channel ratio between sunlit and shadowed ground: it undoes both the darkening and the blue cast.

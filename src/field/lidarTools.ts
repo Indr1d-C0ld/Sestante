@@ -152,6 +152,33 @@ function clearOf(built: Uint8Array, cols: number, rows: number, reach: number) {
   return near;
 }
 
+/** Trees read from the plate that stand on something the survey sees taller than 3 m, anywhere under their crown. */
+function treesOnTall(engine: Engine, dsm: ArrayLike<number>, ground: ArrayLike<number>, cols: number, rows: number) {
+  const p = engine.data.projection;
+  const cellX = (p.halfX * 2) / cols;
+  const cellZ = (p.halfZ * 2) / rows;
+  let n = 0;
+  let tall = 0;
+  for (const tree of engine.plate.trees) {
+    if (tree.source !== "ripresa") continue;
+    n++;
+    const r = Math.max(cellX, tree.r * 0.7);
+    let top = 0;
+    for (let z = tree.z - r; z <= tree.z + r; z += cellZ) {
+      for (let x = tree.x - r; x <= tree.x + r; x += cellX) {
+        if ((x - tree.x) ** 2 + (z - tree.z) ** 2 > r * r) continue;
+        const i = Math.floor((x + p.halfX) / cellX);
+        const j = Math.floor((z + p.halfZ) / cellZ);
+        if (i < 0 || j < 0 || i >= cols || j >= rows) continue;
+        const v = dsm[j * cols + i]! - ground[j * cols + i]!;
+        if (Number.isFinite(v)) top = Math.max(top, v);
+      }
+    }
+    if (top > 3) tall++;
+  }
+  return n ? { n, onTall: tall / n } : null;
+}
+
 /** The survey around one footprint, as heights above the ground, one cell beyond its bounds. */
 function roofPatch(ring: number[], dsm: ArrayLike<number>, ground: ArrayLike<number>, cols: number, rows: number, cellX: number, cellZ: number, halfX: number, halfZ: number): RoofGrid {
   let x0 = Infinity;
@@ -318,6 +345,7 @@ export async function benchmark(engine: Engine, offer: LidarOffer): Promise<Benc
     shadowHeights: fromShadows.length ? errorStats("ombra", fromShadows) : null,
     shadowRoof: fromShadowsRoof.length ? errorStats("ombra", fromShadowsRoof) : null,
     shadowFloors: floors ? { n: floors, held: floorsHeld } : null,
+    trees: treesOnTall(engine, dsm, ground, cols, rows),
     roofSurface: roofModel.length ? { n: roofModel.length, model: median(roofModel), flat: median(roofFlat), byFrom: Object.fromEntries([...roofGroups].map(([k, g]) => [k, { n: g.model.length, model: median(g.model), flat: median(g.flat) }])) } : null,
     shadow,
     canopy: maskScore(canopyFound, tall, unbuilt),

@@ -168,6 +168,8 @@ export type BenchReport = {
   /** How many floors left by stopped shadows stay under the surveyed top. */
   shadowFloors?: { n: number; held: number } | null;
   /** Median, over buildings, of the mean distance between the model's roof surface and the survey's; and a flat top's. */
+  /** Trees read from the plate, and the share that stands on something the survey sees taller than 3 m. */
+  trees?: { n: number; onTall: number } | null;
   roofSurface?: { n: number; model: number; flat: number; byFrom?: Record<string, { n: number; model: number; flat: number }> } | null;
   shadow: MaskScoreRow;
   canopy: MaskScoreRow;
