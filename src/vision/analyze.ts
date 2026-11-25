@@ -55,6 +55,8 @@ export type AnalysisResult = {
   mpp: number;
   sun: SunReading;
   registration: { dx: number; dy: number; score: number; applied: boolean };
+  /** Lit and shaded asphalt look alike on this plate: shadow lengths, and the heights read from them, are weak. */
+  shadowsWeak?: boolean;
   heights: Record<string, HeightReading>;
   roofTones: Record<string, [number, number, number]>;
   trees: TreeReading[];
@@ -413,7 +415,92 @@ function hash2(a: number, b: number) {
   return n - Math.floor(n);
 }
 
-export function classifyPixels(rgba: Uint8ClampedArray, grid: Grid, mpp: number) {
+/**
+ * How green a surface that is not vegetation looks on this plate, by brightness. Mosaics carry a colour cast, and shadows
+ * lit by the sky alone a stronger one: on a greenish plate half the asphalt would otherwise pass for lawn.
+ * `neutral` marks mapped roads and roofs. Returns what to subtract from the green index at each luminance.
+ */
+export function greenCast(lum: Float32Array, exg: Float32Array, neutral: Uint8Array | undefined) {
+  const bins = 8;
+  const cast = new Float32Array(bins);
+  if (!neutral) return cast;
+  const samples: number[][] = Array.from({ length: bins }, () => []);
+  const stride = Math.max(1, Math.floor(lum.length / 400_000));
+  for (let k = 0; k < lum.length; k += stride) if (neutral[k]) samples[Math.min(bins - 1, Math.floor(lum[k]! * bins))]!.push(exg[k]!);
+  const all = samples.flat();
+  if (all.length < 2000) return cast;
+  // 0.022 is the green index of grey asphalt on a plate without cast: only the excess is removed, and green is never added.
+  const whole = Math.max(0, percentile(all, 0.5) - 0.022);
+  for (let b = 0; b < bins; b++) cast[b] = samples[b]!.length >= 300 ? Math.max(0, percentile(samples[b]!, 0.5) - 0.022) : whole;
+  return cast;
+}
+
+/** Otsu's split of a luminance histogram up to `top`: the cut, and how much falls below it. */
+function histogramSplit(hist: ArrayLike<number>, top = 255) {
+  let count = 0;
+  let total = 0;
+  for (let i = 0; i <= top; i++) {
+    count += hist[i]!;
+    total += i * hist[i]!;
+  }
+  let below = 0;
+  let sum = 0;
+  let best = -1;
+  let split = top;
+  let share = 1;
+  for (let i = 0; i <= top; i++) {
+    below += hist[i]!;
+    if (!below) continue;
+    const above = count - below;
+    if (!above) break;
+    sum += i * hist[i]!;
+    const between = below * above * (sum / below - (total - sum) / above) ** 2;
+    if (between > best) {
+      best = between;
+      split = i;
+      share = below / count;
+    }
+  }
+  return { split, share };
+}
+
+/**
+ * The luminance under which mapped asphalt is in shadow, or null without enough road. Asphalt is one material, so its
+ * histogram holds two populations, lit and shaded, where a whole scene mixes pale squares and dark roofs into both.
+ * When nearly all the road falls on the dark side of the first cut, the bright side is paint and pavement, and the dark
+ * side still holds both populations: it is cut again.
+ */
+export function asphaltShadowLevel(lum: Float32Array, roads: Uint8Array | undefined): { level: number | null; enough: boolean } {
+  if (!roads) return { level: null, enough: false };
+  const hist = new Uint32Array(256);
+  let count = 0;
+  for (let k = 0; k < lum.length; k++) {
+    if (!roads[k]) continue;
+    hist[Math.min(255, Math.floor(lum[k]! * 255))]!++;
+    count++;
+  }
+  if (count < 5000) return { level: null, enough: false };
+  let top = 255;
+  let cut = histogramSplit(hist);
+  if (cut.share > 0.7) {
+    top = cut.split;
+    cut = histogramSplit(hist, top);
+  }
+  // A cut is always found: it means something only if a valley separates two peaks. On a plate where lit and shaded
+  // asphalt are equally dark there is one slope and no valley, and the cut would call the whole road shadow.
+  const smooth = new Float32Array(256);
+  for (let i = 0; i <= top; i++) for (let d = -4; d <= 4; d++) smooth[i]! += hist[Math.max(0, Math.min(top, i + d))]!;
+  let low = 0;
+  for (let i = 0; i <= cut.split; i++) if (smooth[i]! > smooth[low]!) low = i;
+  let high = Math.min(top, cut.split + 1);
+  for (let i = high; i <= top; i++) if (smooth[i]! > smooth[high]!) high = i;
+  let valley = low;
+  for (let i = low; i <= high; i++) if (smooth[i]! < smooth[valley]!) valley = i;
+  if (smooth[valley]! > Math.min(smooth[low]!, smooth[high]!) * 0.75) return { level: null, enough: true };
+  return { level: valley / 255, enough: true };
+}
+
+export function classifyPixels(rgba: Uint8ClampedArray, grid: Grid, mpp: number, neutral?: Uint8Array, roads?: Uint8Array) {
   const { w, h } = grid;
   const n = w * h;
   const lum = new Float32Array(n);
@@ -427,6 +514,16 @@ export function classifyPixels(rgba: Uint8ClampedArray, grid: Grid, mpp: number)
     lum[i] = l;
     lum2[i] = l * l;
     exg[i] = (2 * g - r - b) / (r + g + b + 0.04);
+  }
+  const cast = greenCast(lum, exg, neutral);
+  if (cast.some((v) => v > 0)) {
+    for (let i = 0; i < n; i++) {
+      // Interpolated between brightness bands, so the correction has no steps.
+      const at = Math.max(0, Math.min(cast.length - 1, lum[i]! * cast.length - 0.5));
+      const lo = Math.floor(at);
+      const hi = Math.min(cast.length - 1, lo + 1);
+      exg[i] = exg[i]! - (cast[lo]! + (cast[hi]! - cast[lo]!) * (at - lo));
+    }
   }
   const lumT = integral(lum, grid);
   const lum2T = integral(lum2, grid);
@@ -493,6 +590,10 @@ export function classifyPixels(rgba: Uint8ClampedArray, grid: Grid, mpp: number)
     if (split > 0 && gap > 28 && hist.slice(0, split + 1).reduce((a, b) => a + b, 0) > n * 0.02) absolute = Math.min(absolute, (split + 6) / 255);
   }
 
+  // On a plate with a cast the channel comparison is already answered by the corrected index.
+  const tinted = cast.some((v) => v > 0.02);
+  const asphaltRead = asphaltShadowLevel(lum, roads);
+  const asphalt = asphaltRead.level;
   const shadowRaw = new Uint8Array(n);
   const veg = new Uint8Array(n);
   const texture = new Float32Array(n);
@@ -502,14 +603,15 @@ export function classifyPixels(rgba: Uint8ClampedArray, grid: Grid, mpp: number)
       const l = lum[k]!;
       const mean = boxMean(lumT, grid, x, y, rLocal);
       const greenLit = exg[k]! > 0.09 && l > 0.1;
-      if (l < absolute && l < mean * 0.72 && !greenLit) shadowRaw[k] = 1;
+      // On mapped asphalt its own two populations decide; elsewhere a pixel must also be darker than its surroundings.
+      if (asphalt != null && roads![k] ? l < asphalt && !greenLit : l < absolute && l < mean * 0.72 && !greenLit) shadowRaw[k] = 1;
       const m = boxMean(lumT, grid, x, y, rTex);
       const m2 = boxMean(lum2T, grid, x, y, rTex);
       texture[k] = Math.sqrt(Math.max(0, m2 - m * m));
       const r = rgba[k * 4]!;
       const g = rgba[k * 4 + 1]!;
       const b = rgba[k * 4 + 2]!;
-      if (exg[k]! > 0.045 && g >= r * 0.98 && g > b * 1.02 && g > 22) veg[k] = 1;
+      if (exg[k]! > 0.045 && (tinted || (g >= r * 0.98 && g > b * 1.02)) && g > 22) veg[k] = 1;
     }
   }
   // Morphological opening keeps cast shadows and drops isolated dark speckles such as cars and dark roofs' texture.
@@ -520,22 +622,32 @@ export function classifyPixels(rgba: Uint8ClampedArray, grid: Grid, mpp: number)
       if (shadowRaw[k] && shadowRaw[k - 1]! + shadowRaw[k + 1]! + shadowRaw[k - w]! + shadowRaw[k + w]! >= 2) shadow[k] = 1;
     }
   }
-  return { lum, exg, shadow, veg, texture, lumT };
+  // Plenty of road and no valley between lit and shaded asphalt: on this plate shadows are hard to tell from dark ground.
+  return { lum, exg, shadow, veg, texture, lumT, shadowsWeak: asphaltRead.enough && asphalt == null };
 }
 
 export function analyzePlate(input: AnalysisInput): AnalysisResult {
   const { rgba, width: w, height: h, mpp, lat, lon } = input;
   const grid: Grid = { w, h };
   const n = w * h;
-  const { lum, exg, shadow, veg, texture } = classifyPixels(rgba, grid, mpp);
+  // Mapped roads and roofs are known not to be vegetation: they show the plate's colour cast.
+  const road = new Uint8Array(n);
+  for (const item of input.roads) stampRoad(road, grid, item.pts, item.halfWidth);
+  const neutral = new Uint8Array(n);
+  for (const fp of input.footprints) fillRing(neutral, grid, fp.rings);
+  // Asphalt only where no roof covers it.
+  const asphaltMask = new Uint8Array(n);
+  for (let k = 0; k < n; k++) {
+    asphaltMask[k] = road[k]! && !neutral[k] ? 1 : 0;
+    if (road[k]) neutral[k] = 1;
+  }
+  const { lum, exg, shadow, veg, texture, shadowsWeak } = classifyPixels(rgba, grid, mpp, neutral, asphaltMask);
 
   const registration = input.register === false ? { dx: 0, dy: 0, score: 0, applied: false } : coRegister(lum, grid, input.footprints, mpp);
   const footprints = registration.applied ? input.footprints.map((fp) => shiftFootprint(fp, registration.dx, registration.dy)) : input.footprints;
 
   const built = new Uint8Array(n);
   for (const fp of footprints) fillRing(built, grid, fp.rings);
-  const road = new Uint8Array(n);
-  for (const item of input.roads) stampRoad(road, grid, item.pts, item.halfWidth);
   const water = new Uint8Array(n);
   for (const ring of input.water) fillRing(water, grid, [ring]);
 
@@ -640,6 +752,8 @@ export function analyzePlate(input: AnalysisInput): AnalysisResult {
           rays: raw.rays,
         }
       : { h: null, confidence: 0, rays: 0 };
+    // Where shadows cannot be told from dark asphalt a reading is a hint: the neighbourhood's heights are the safer guess.
+    if (shadowsWeak) heights[fp.id]!.confidence *= 0.4;
     if (raw?.floor) heights[fp.id]!.atLeast = Math.min(320, raw.floor * tan);
     if (raw?.length) readHeights.push(raw.length * tan);
     const ring = fp.rings[0]!;
@@ -753,6 +867,7 @@ export function analyzePlate(input: AnalysisInput): AnalysisResult {
     mpp,
     sun,
     registration: { ...registration, dx: registration.dx * mpp, dy: registration.dy * mpp },
+    shadowsWeak,
     heights,
     roofTones,
     trees,

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { castShadows, fitSunAltitude, maskScore, resampleMask, type SurfaceGrid } from "../src/vision/bench.ts";
-import { analyzePlate, fillRing, shadowHeights, type Footprint } from "../src/vision/analyze.ts";
+import { analyzePlate, asphaltShadowLevel, fillRing, greenCast, shadowHeights, type Footprint } from "../src/vision/analyze.ts";
 
 /** Flat ground with one block: 10 m tall, 10 cells wide, on a 1 m grid. */
 function block(size = 80, tall = 10): SurfaceGrid {
@@ -124,4 +124,28 @@ test("l'acqua scura non allunga un'ombra", () => {
   const water = new Uint8Array(w * w);
   for (let y = 0; y < 60; y++) for (let x = 0; x < w; x++) water[y * w + x] = 1;
   assert.equal(shadowHeights(shadow, built, grid, [house], 0, 1, water).casa, undefined);
+});
+
+test("la dominante verde di una ripresa si misura su strade e tetti e non aggiunge mai verde", () => {
+  const n = 40_000;
+  const lum = new Float32Array(n).fill(0.4);
+  const exg = new Float32Array(n).fill(0.14);
+  const neutral = new Uint8Array(n).fill(1);
+  const cast = greenCast(lum, exg, neutral);
+  assert.ok(Math.abs(cast[3]! - 0.118) < 0.002, `dominante ${cast[3]}`);
+  assert.ok(greenCast(lum, new Float32Array(n).fill(0.01), neutral).every((v) => v === 0));
+  assert.ok(greenCast(lum, exg, undefined).every((v) => v === 0));
+});
+
+test("l'asfalto dà la sua soglia d'ombra solo se mostra due popolazioni", () => {
+  const n = 20_000;
+  const roads = new Uint8Array(n).fill(1);
+  const two = new Float32Array(n);
+  for (let k = 0; k < n; k++) two[k] = (k % 2 ? 0.08 : 0.24) + ((k * 7919) % 100) / 2500;
+  const read = asphaltShadowLevel(two, roads);
+  assert.ok(read.level != null && read.level > 0.12 && read.level < 0.24, `soglia ${read.level}`);
+  const one = new Float32Array(n);
+  for (let k = 0; k < n; k++) one[k] = 0.05 + ((k * 7919) % 1000) / 8000;
+  assert.deepEqual(asphaltShadowLevel(one, roads), { level: null, enough: true });
+  assert.equal(asphaltShadowLevel(two, undefined).enough, false);
 });
