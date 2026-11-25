@@ -172,7 +172,7 @@ export function TimeTravel({ engine, expedition, versions, plateCache, onClose, 
   }, [apply, playing, recording, seconds, shots.length]);
 
   const record = async () => {
-    const source = engine.renderer.domElement;
+    const source = engine.canvasElement;
     const width = 1280;
     const height = 720;
     const out = document.createElement("canvas");

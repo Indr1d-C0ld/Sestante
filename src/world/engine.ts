@@ -17,6 +17,7 @@ import { buildFigure, poseFigure, type AltEgo, type Figure } from "./avatar.ts";
 import { SimClock, WeatherModel } from "./sim.ts";
 import { Sky } from "./sky.ts";
 import { buildFarField, buildTerrain } from "./terrain.ts";
+import { GpuView } from "./gpu.ts";
 
 export type Snapshot = {
   x: number;
@@ -56,8 +57,17 @@ export type EngineHooks = {
 
 const TONE = { agx: 0, aces: 1, neutral: 2 } as const;
 
+/** The WebGPU engine is asked for by the setting, or by ?motore=webgpu in the address for a single visit. */
+export function wantsGpu(settings: Settings) {
+  const asked = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("motore");
+  if (asked) return asked.startsWith("webgpu");
+  return settings.engine === "webgpu";
+}
+
 export class Engine {
-  readonly renderer: THREE.WebGLRenderer;
+  /** The WebGL2 renderer, or null when the field runs on the WebGPU engine. */
+  readonly gl: THREE.WebGLRenderer | null = null;
+  readonly gpu: GpuView | null = null;
   readonly scene = new THREE.Scene();
   readonly camera: THREE.PerspectiveCamera;
   readonly clock = new SimClock();
@@ -68,8 +78,8 @@ export class Engine {
   readonly sun = new THREE.Vector3(0, 1, 0);
   readonly moon = new THREE.Vector3(0, -1, 0);
   private csm: CSM | null = null;
-  private sky: Sky;
-  private post: PostChain;
+  private sky: Sky | null = null;
+  private post: PostChain | null = null;
   private forest: Forest;
   private meadow: Meadow;
   private precip: Precipitation;
@@ -167,13 +177,21 @@ export class Engine {
     this.data = data;
     this.plate = data.plate;
     this.settings = settings;
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance", preserveDrawingBuffer: false });
-    this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
-    this.renderer.toneMapping = THREE.NoToneMapping;
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
-    this.renderer.info.autoReset = true;
     this.camera = new THREE.PerspectiveCamera(settings.fov, 1, 0.18, 40000);
+    // A canvas keeps the first kind of context it gets: the engine is chosen once, when the field opens.
+    if (wantsGpu(settings)) {
+      // ?motore=webgpu-gl draws the WebGPU engine through WebGL2 on purpose, as a browser without WebGPU would.
+      const forceWebGL = typeof location !== "undefined" && new URLSearchParams(location.search).get("motore") === "webgpu-gl";
+      this.gpu = new GpuView(canvas, this.scene, this.camera, { size: settings.shadowSize, cascades: settings.cascades, far: settings.shadowFar }, forceWebGL);
+    } else {
+      const gl = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance", preserveDrawingBuffer: false });
+      gl.outputColorSpace = THREE.LinearSRGBColorSpace;
+      gl.toneMapping = THREE.NoToneMapping;
+      gl.shadowMap.enabled = true;
+      gl.shadowMap.type = THREE.PCFShadowMap;
+      gl.info.autoReset = true;
+      this.gl = gl;
+    }
     this.camera.rotation.order = "YXZ";
     this.scene.add(this.world, this.pinsGroup, this.gnomonGroup, this.hypothesisGroup, this.figuresGroup, this.routeGroup, this.markerGroup, this.sightGroup, this.rayGroup, this.laserGroup);
 
@@ -183,7 +201,7 @@ export class Engine {
     U.uNoise.value = makeNoiseTexture();
     U.uMat.value ??= makeGroundMaterials();
     U.uHalf.value.set(data.projection.halfX, data.projection.halfZ);
-    const aniso = this.renderer.capabilities.getMaxAnisotropy();
+    const aniso = this.maxAnisotropy();
     this.plateTexture = canvasTexture(this.plate.canvas, Math.min(12, aniso));
     this.gainTexture = dataTexture(this.plate.analysis.gainMap, this.plate.analysis.width, this.plate.analysis.height);
     this.classTexture = dataTexture(this.plate.analysis.classMap, this.plate.analysis.width, this.plate.analysis.height);
@@ -197,8 +215,10 @@ export class Engine {
       U.uFarHalf.value = data.far.span / 2;
     } else U.uFarPlate.value = this.plateTexture;
 
-    this.sky = new Sky(this.renderer, this.scene);
-    this.post = new PostChain(this.renderer, this.sky.lutTexture);
+    if (this.gl) {
+      this.sky = new Sky(this.gl, this.scene);
+      this.post = new PostChain(this.gl, this.sky.lutTexture);
+    }
     this.ambient = new THREE.AmbientLight(0xffffff, 0.02);
     this.scene.add(this.ambient);
     this.torch = new THREE.SpotLight(0xfff0d8, 0, 60, 0.42, 0.55, 1.4);
@@ -253,15 +273,26 @@ export class Engine {
     return { x, z };
   }
 
+  private maxAnisotropy() {
+    return this.gl ? this.gl.capabilities.getMaxAnisotropy() : 16;
+  }
+
+  /** The canvas the field is drawn on, whichever engine draws it. */
+  get canvasElement() {
+    return this.canvas;
+  }
+
   private buildCsm() {
     const s = this.settings;
+    // The WebGPU engine casts its own cascades (CSMShadowNode, in gpu.ts).
+    if (this.gpu) return;
     if (this.csm) {
       this.csm.remove();
       this.csm.dispose();
       this.csm = null;
     }
     if (s.shadowSize <= 0) {
-      this.renderer.shadowMap.enabled = false;
+      if (this.gl) this.gl.shadowMap.enabled = false;
       const fallback = new THREE.DirectionalLight(0xffffff, 3);
       fallback.name = "fallback-sun";
       this.scene.add(fallback, fallback.target);
@@ -551,7 +582,7 @@ export class Engine {
   /** Goes to another shot of the same place: ground and roofs cross-fade, and trees and unmapped volumes are re-read from that shot. */
   setPlate(state: PlateState) {
     this.plate = state;
-    const aniso = this.renderer.capabilities.getMaxAnisotropy();
+    const aniso = this.maxAnisotropy();
     const next = canvasTexture(state.canvas, Math.min(12, aniso));
     U.uPlateB.value = next;
     U.uPlateMix.value = 0.0001;
@@ -597,7 +628,8 @@ export class Engine {
       }
       this.csm.updateFrustums();
     }
-    this.sky.setQuality(next.clouds);
+    this.sky?.setQuality(next.clouds);
+    this.gpu?.setShadow(next.shadowSize, next.shadowFar);
     this.forest.setDetail(next.treeDensity, next.treeNear);
     this.meadow.density = next.grass;
     this.meadow.mesh.visible = next.grass > 0.01;
@@ -670,12 +702,15 @@ export class Engine {
     const pixelRatio = Math.min(window.devicePixelRatio || 1, 2) * this.settings.renderScale * this.scale;
     const rw = Math.max(16, Math.round(w * pixelRatio));
     const rh = Math.max(16, Math.round(h * pixelRatio));
-    this.renderer.setPixelRatio(1);
-    this.renderer.setSize(rw, rh, false);
+    if (this.gl) {
+      this.gl.setPixelRatio(1);
+      this.gl.setSize(rw, rh, false);
+    }
+    this.gpu?.setSize(rw, rh);
     if (this.size.w !== rw || this.size.h !== rh) {
       this.size = { w: rw, h: rh };
-      this.post.setSize(rw, rh);
-      this.sky.setSize(rw, rh);
+      this.post?.setSize(rw, rh);
+      this.sky?.setSize(rw, rh);
     }
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
@@ -711,8 +746,9 @@ export class Engine {
     window.removeEventListener("resize", this.onResize);
     window.removeEventListener("blur", this.onBlur);
     this.audio.dispose();
-    this.renderer.dispose();
-    this.renderer.forceContextLoss();
+    this.gl?.dispose();
+    this.gl?.forceContextLoss();
+    this.gpu?.dispose();
   }
 
   // --- Simulation ---
@@ -1307,6 +1343,8 @@ export class Engine {
     const dirIsMoon = sun.y < -0.03;
     const dir = dirIsMoon ? this.moon : sun;
     const sidereal = (this.clock.t / 86164090) * Math.PI * 2;
+    if (this.gpu) return this.renderGpu();
+    if (!this.sky || !this.post || !this.gl) return;
     this.sky.update({ sun, moon: this.moon, moonIllum: 0, turbidity, cloud: w.cloud, fogGrey: Math.max(fogGrey * 0.9, w.visibility < 3000 ? 0.9 : 0), lightning: this.weather.lightning, camera, sidereal, groundY: Math.max(0, this.pos.y) });
 
     const sunI = THREE.MathUtils.smoothstep(sun.y, -0.03, 0.08);
@@ -1336,10 +1374,10 @@ export class Engine {
     const gloom = 1 - 0.5 * Math.min(1, w.rain / 12) * THREE.MathUtils.smoothstep(w.cloud, 0.7, 1);
     this.exposure += (target * gloom - this.exposure) * 0.02;
 
-    this.renderer.setRenderTarget(this.post.scene);
-    this.renderer.clear();
-    this.renderer.render(this.scene, camera);
-    this.lastInfo = { calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles };
+    this.gl.setRenderTarget(this.post.scene);
+    this.gl.clear();
+    this.gl.render(this.scene, camera);
+    this.lastInfo = { calls: this.gl.info.render.calls, triangles: this.gl.info.render.triangles };
     this.post.render({
       camera,
       aoStrength: s.ao,
@@ -1360,10 +1398,28 @@ export class Engine {
     });
   }
 
+  /** The WebGPU engine's frame: no own sky, clouds or post chain yet (see gpu.ts), the same sun, exposure and world. */
+  private renderGpu() {
+    const gpu = this.gpu!;
+    if (!gpu.isReady) return;
+    const w = this.weather.now;
+    const s = this.settings;
+    const sun = this.sun;
+    const dirIsMoon = sun.y < -0.03;
+    const sunI = THREE.MathUtils.smoothstep(sun.y, -0.03, 0.08);
+    const intensity = dirIsMoon ? Math.max(0, this.moon.y) * 0.7 : 4.1 * sunI;
+    const skyLevel = 0.03 + Math.max(0, sun.y) * 1.3 + (dirIsMoon ? 0 : 0.14);
+    const target = s.autoExposure ? Math.min(6.5, 0.72 / Math.pow(skyLevel * (1 - w.cloud * 0.4), 0.6)) : 1;
+    this.exposure += (target - this.exposure) * 0.02;
+    gpu.convert(this.scene);
+    gpu.render(dirIsMoon ? this.moon : sun, intensity, this.exposure * s.exposure, { ao: s.ao, bloom: s.bloom, visibility: w.visibility, aerial: s.aerial });
+    this.lastInfo = gpu.info();
+  }
+
   /** Grabs the frame just drawn; the drawing buffer is only valid until the browser composites. */
   photograph(maxWidth = 1600) {
     this.render();
-    const source = this.renderer.domElement;
+    const source = this.canvas;
     const scale = Math.min(1, maxWidth / source.width);
     const out = document.createElement("canvas");
     out.width = Math.round(source.width * scale);
@@ -1385,7 +1441,7 @@ export class Engine {
       this.scale = 1;
       this.resize();
     }
-    const source = this.renderer.domElement;
+    const source = this.canvas;
     const scale = Math.min(1, maxWidth / source.width);
     const out = document.createElement("canvas");
     out.width = Math.round(source.width * scale);

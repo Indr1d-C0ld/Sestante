@@ -73,6 +73,19 @@ Poi apri http://localhost:4173. Senza chiavi funziona già tutto ciò che usa fo
 
 Variabili d'ambiente: `PORT` per la porta, `SESTANTE_DATA` per la cartella dei dati (predefinita `data/` nel progetto). Il server ascolta solo su `127.0.0.1`.
 
+### Motore WebGPU, sperimentale
+
+Accanto al motore WebGL2 sta nascendo un motore WebGPU, scelto in **Regola → Motore grafico → Renderer** e attivo dal prossimo ingresso nel campo; per una sola visita basta aggiungere `&motore=webgpu` all'indirizzo. Dove il browser non offre WebGPU lo stesso motore disegna tramite WebGL2, e la stessa scheda dice quale dei due sta lavorando e perché.
+
+- **Firefox:** WebGPU è spento per impostazione predefinita. Si accende in `about:config` con `dom.webgpu.enabled` a `true`.
+- **Chromium:** va avviato con `--enable-unsafe-webgpu --enable-features=Vulkan,WebGPU`.
+
+Cosa è portato: terreno, tetti e campo lontano leggono la ripresa come nel motore WebGL2, e da vicino il suolo ha la sua grana (asfalto, lastre, terra, prato) e le sue piccole asperità; i muri hanno le stesse cinque facciate con finestre e luci di notte; le chiome hanno foglie e ondeggiano nel vento, i tronchi hanno corteccia; l'erba prende il colore del prato sottostante e si piega; l'acqua si muove; muretti, ringhiere, strade e arredi ci sono. Il sole getta ombre a cascata, il cielo fisico di three.js illumina la scena anche come ambiente, e dopo la scena vengono occlusione ambientale (GTAO), bagliore e la prospettiva aerea del motore WebGL2: il colore del cielo lungo ogni linea di vista, che si scalda verso il sole, e l'estinzione dalla visibilità riportata, assottigliata con la quota.
+
+Cosa manca: nuvole, pioggia, neve, allagamento, proiezione delle foto e colori della provenienza. Differenze ancora visibili: il chiarore verso il sole è più debole, perché il cielo di three.js è meno caldo di quello proprio, e il prato da vicino è più chiaro e meno verde. La scheda del motore elenca cosa è portato e cosa no. L'aspetto è stato tarato a occhio contro il motore WebGL2 sul riquadro di Zurigo.
+
+**Prestazioni.** Su una RTX 3060, a 1400×820, con la versione installata e senza il limite dello schermo, un fotogramma di Zurigo dura 4,8 ms col motore WebGL2 e 7,4 ms con quello WebGPU (6,7 ms col bagliore spento): circa 208 e 135 fotogrammi al secondo. Il motore nuovo è limitato dal processore, non dalla scheda: gli oggetti da disegnare sono appena 71, ma three.js spende di più per ciascun disegno su WebGPU. Il profilo del processore mostra dove: un terzo alle ombre a cascata, un quinto al bagliore, che sono una dozzina di passaggi di sfocatura. Per questo la cascata vicina si ridisegna a ogni fotogramma, la seconda ogni due e la terza ogni quattro (in volo non si nota), e col bagliore a zero il passaggio non viene proprio eseguito. Il motore WebGL2 resta il predefinito finché quello nuovo non lo eguaglia su misure e schermate.
+
 ### Segmentazione con rete neurale, facoltativa
 
 Sestante può far leggere la ripresa anche a FLAIR-INC, una rete dell'IGN francese che distingue edifici, asfalto, terra, acqua, conifere, latifoglie, arbusti ed erba. Senza, tutto funziona con le regole proprie. Servono due cose:

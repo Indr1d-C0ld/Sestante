@@ -82,6 +82,8 @@ export type Patch = {
 };
 
 export function shade<T extends THREE.MeshStandardMaterial>(material: T, patch: Patch, csm: CSM | null) {
+  // The WebGPU engine ports materials by this key (gpu.ts).
+  material.userData.shadeKey = patch.key;
   if (csm) csm.setupMaterial(material);
   const previous = material.onBeforeCompile;
   material.onBeforeCompile = function (shader, renderer) {

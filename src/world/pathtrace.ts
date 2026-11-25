@@ -161,7 +161,7 @@ export async function pathTraced(engine: Engine, samples: number, radius: number
   scene.background = scene.environment;
 
   const output = document.createElement("canvas");
-  const source = engine.renderer.domElement;
+  const source = engine.canvasElement;
   const scale = Math.min(1, 1280 / source.width);
   output.width = Math.round(source.width * scale);
   output.height = Math.round(source.height * scale);

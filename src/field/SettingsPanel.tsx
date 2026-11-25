@@ -4,6 +4,29 @@ import { PRESETS, type Settings } from "../world/settings.ts";
 import { WEATHER_PRESETS, type WeatherValues } from "../world/sim.ts";
 import { sunEvents } from "../core/solar.ts";
 
+/** Material keys of the WebGPU port report, as the explorer would name them. */
+const PART_NAMES: Record<string, string> = {
+  ground: "terreno",
+  far: "campo lontano",
+  roofs: "tetti",
+  walls: "muri",
+  water: "acqua",
+  "walls-low": "muretti",
+  "fence-bars": "recinzioni",
+  ribbons: "strade e binari",
+  props: "arredi",
+  leaves: "foglie",
+  crowns: "chiome",
+  trunks: "tronchi",
+  grass: "erba",
+  avatar: "alter-ego",
+  flood: "allagamento",
+  LineBasicMaterial: "linee di misura",
+  PointsMaterial: "punti di misura",
+  ShaderMaterial: "cielo, pioggia e altri effetti",
+};
+const parts = (keys: string[]) => keys.map((key) => PART_NAMES[key] ?? key).join(", ") || "nessuno";
+
 type Tab = "tempo" | "meteo" | "grafica" | "mondo" | "esploratore" | "audio";
 
 function Slider({ label, note, value, min, max, step, format, onChange }: { label: string; note?: string; value: number; min: number; max: number; step: number; format?: (v: number) => string; onChange: (v: number) => void }) {
@@ -192,6 +215,23 @@ export function SettingsPanel({ engine, settings, onChange, onClose, onShotDay, 
                     </button>
                   ))}
                 </div>
+                <label className="setting">
+                  <span>Renderer</span>
+                  <select value={settings.engine} onChange={(e) => set("engine", e.target.value as Settings["engine"])}>
+                    <option value="webgl2">WebGL2 (completo)</option>
+                    <option value="webgpu">WebGPU (sperimentale)</option>
+                  </select>
+                </label>
+                {new URLSearchParams(location.search).get("motore") ? (
+                  <p className="hint">Per questa visita il motore è scelto dall'indirizzo (motore={new URLSearchParams(location.search).get("motore")}).</p>
+                ) : (
+                  settings.engine !== (engine.gpu ? "webgpu" : "webgl2") && <p className="hint">Il motore cambia al prossimo ingresso nel campo: ricarica la pagina.</p>
+                )}
+                {engine.gpu && (
+                  <p className="hint">
+                    Motore WebGPU attivo{engine.gpu.report.backend === "WebGL2" ? `, disegnato tramite WebGL2 (${engine.gpu.report.reason})` : " sulla scheda grafica"}. Portati: {parts(engine.gpu.report.ported)}. Ancora semplificati: {parts(engine.gpu.report.missing)}. Nascosti: {parts(engine.gpu.report.hidden)}. Mancano ancora nuvole, pioggia, neve, allagamento, proiezione delle foto e colori della provenienza.
+                  </p>
+                )}
                 <Slider label="Scala di rendering" value={settings.renderScale} min={0.5} max={2} step={0.05} format={(v) => `${(v * 100).toFixed(0)} %`} onChange={(v) => set("renderScale", v)} />
                 <Check label="Risoluzione dinamica" note="Scende da sola per tenere il ritmo" value={settings.dynamicRes} onChange={(v) => set("dynamicRes", v)} />
                 <Slider label="Obiettivo fotogrammi" value={settings.targetFps} min={20} max={120} step={5} format={(v) => `${v} fps`} onChange={(v) => set("targetFps", v)} />
