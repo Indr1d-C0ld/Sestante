@@ -5,6 +5,7 @@ import type { FieldSpec, PlateRef } from "../core/types.ts";
 import type { AnalysisInput, AnalysisResult, Footprint, TreeHeightOrigin } from "../vision/analyze.ts";
 import type { WorkerReply } from "../vision/worker.ts";
 import { aboveLevels, STOREY_MIN, storeyHeight } from "../core/storeys.ts";
+import { nearRectangle, presumedRise, presumePitched } from "../core/roofs.ts";
 
 type LatLon = [number, number];
 type OsmFeature = { id: string; tags: Record<string, string>; rings?: LatLon[][]; line?: LatLon[]; at?: LatLon };
@@ -38,6 +39,8 @@ export type Building = {
   base: number;
   top: number;
   roofShape: string;
+  /** Where the roof's shape comes from: the map, the plate's terracotta, a presumption from size, the laser, or nowhere. */
+  roofFrom?: "mappa" | "colore" | "presunta" | "LiDAR" | "nessuna";
   roofHeight: number;
   roofTone: [number, number, number];
   isPart: boolean;
@@ -783,14 +786,24 @@ export async function loadField(spec: FieldSpec, onStep: (text: string) => void,
       roofShape = kind === "tumulus" || kind === "mound" ? "dome" : "pyramidal";
       roofHeight = height;
     }
+    let roofFrom: Building["roofFrom"] = roofShape ? "mappa" : "nessuna";
     if (!roofShape && !item.isPart) {
-      // Terracotta tones from the plate suggest a pitched roof where the map says nothing.
+      // Terracotta tones from the plate suggest a pitched roof where the map says nothing; so does being a mid-sized
+      // building of some height, which the laser found pitched or uneven far more often than flat.
       const reddish = tone[0] > tone[1] * 1.14 && tone[0] > tone[2] * 1.3;
-      if (reddish && item.area < 900 && item.rings.length === 1) roofShape = "hipped";
+      const rectangle = item.rings.length === 1 && nearRectangle(item.rings[0]!, item.area);
+      // Only on near-rectangles: over complex plans the ridge cannot follow the outline (see buildings.ts).
+      if (reddish && item.area < 900 && rectangle) {
+        roofShape = "hipped";
+        roofFrom = "colore";
+      } else if (presumePitched(height, item.area, false, item.isPart) && rectangle) {
+        roofShape = "hipped";
+        roofFrom = "presunta";
+      }
     }
     if (roofShape && roofShape !== "flat" && !roofHeight) {
       const width = Math.sqrt(item.area);
-      roofHeight = roofShape === "dome" || roofShape === "onion" ? width * 0.42 : Math.min(height * 0.45, Math.max(1.4, width * 0.24));
+      roofHeight = roofShape === "dome" || roofShape === "onion" ? width * 0.42 : presumedRise(height, item.area);
     }
     if (item.levels === 0) item.levels = Math.max(1, Math.round((height - roofHeight) / 3.2));
     return {
@@ -800,6 +813,7 @@ export async function loadField(spec: FieldSpec, onStep: (text: string) => void,
       source,
       confidence,
       roofShape: roofShape || "flat",
+      roofFrom,
       roofHeight,
       roofTone: tone,
       base,

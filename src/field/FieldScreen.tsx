@@ -47,6 +47,8 @@ function Icon({ path }: { path: string }) {
   );
 }
 
+const ROOF_NAMES: Record<string, string> = { flat: "piana", hipped: "a padiglione", gabled: "a capanna", mansard: "a mansarda", dome: "a cupola", pyramidal: "a piramide", skillion: "a una falda", gambrel: "a mansarda olandese", "half-hipped": "a padiglione spezzato", cone: "a cono", onion: "a cipolla", round: "a volta", saltbox: "a falde asimmetriche" };
+
 export function FieldScreen({ expedition: initial, canvas, findings, study, onExit }: Props) {
   const glRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<Engine | null>(null);
@@ -392,7 +394,7 @@ export function FieldScreen({ expedition: initial, canvas, findings, study, onEx
         ["Altezza", `${b.height.toFixed(1)} m, ${(b.height / engine.settings.altEgoHeight).toFixed(1)} volte te`],
         ["Fonte altezza", describe[b.source]],
         ["Piani", b.levels ? String(b.levels) : "—"],
-        ["Copertura", b.roofShape],
+        ["Copertura", `${ROOF_NAMES[b.roofShape] ?? b.roofShape}${b.roofFrom === "presunta" ? ", presunta dalle dimensioni" : b.roofFrom === "colore" ? ", presunta dal colore della ripresa" : b.roofFrom === "LiDAR" ? ", dal rilievo laser" : b.roofFrom === "mappa" ? ", dalla mappa" : ""}`],
         ["Sedime", `${b.area.toFixed(0)} m²`],
       ];
       if (b.shadowHeight != null && b.source !== "ombra") rows.push(["Dall'ombra", `${b.shadowHeight.toFixed(1)} m`]);

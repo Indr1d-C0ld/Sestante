@@ -2,6 +2,12 @@ import { api, type LidarOffer } from "../core/api.ts";
 import type { BenchReport, LidarReport } from "../core/types.ts";
 import { castShadows, fitSunAltitude, maskScore, resampleMask, type SurfaceGrid } from "../vision/bench.ts";
 import { leanFromSurface, type Lean } from "../vision/lean.ts";
+import { distanceToRings, nearRectangle, roofSurfaceAt, STEEP_REACH, steepShape } from "../core/roofs.ts";
+
+const median = (values: number[]) => {
+  const s = [...values].sort((a, b) => a - b);
+  return s[s.length >> 1] ?? 0;
+};
 import { errorStats } from "../vision/laser.ts";
 import { fillGaps, hillshade, localRelief, standingHeight, type ReliefGrid, type StandingHeight } from "../vision/lidar.ts";
 import type { Building } from "./load.ts";
@@ -192,6 +198,9 @@ export async function benchmark(engine: Engine, offer: LidarOffer): Promise<Benc
   const fromShadows: number[] = [];
   const fromShadowsRoof: number[] = [];
   let floors = 0;
+  const roofModel: number[] = [];
+  const roofFlat: number[] = [];
+  const roofGroups = new Map<string, { model: number[]; flat: number[] }>();
   let floorsHeld = 0;
   for (const { b, row, cells } of standingBuildings(engine, dsm, ground, cols, rows)) {
     for (const k of cells) built[k] = 1;
@@ -205,6 +214,38 @@ export async function benchmark(engine: Engine, offer: LidarOffer): Promise<Benc
       floors++;
       if (b.shadowFloor <= row.height + 1.5) floorsHeld++;
     }
+    // The roof as a surface, cell by cell: the model's against the survey's, and a flat top at the same height beside it.
+    if (b.isPart || row.coverage < 0.7) continue;
+    // Heights above the building's own ground, as the survey's are.
+    const top = b.height;
+    // As buildings.ts draws it: flat roofs, and steep ones over a complex plan, at the top.
+    const flatTop = b.roofShape === "flat" || (steepShape(b.roofShape) && !(b.rings.length === 1 && nearRectangle(b.rings[0]!, b.area)));
+    const eave = flatTop ? top : top - b.roofHeight;
+    const rise = top - eave;
+    let deepest = 0;
+    const at: { x: number; z: number; h: number }[] = [];
+    for (const k of cells) {
+      const h = dsm[k]! - ground[k]!;
+      if (!Number.isFinite(h) || h < 2) continue;
+      const x = ((k % cols) + 0.5) * grid.cellX - p.halfX;
+      const z = (Math.floor(k / cols) + 0.5) * grid.cellZ - p.halfZ;
+      at.push({ x, z, h });
+      if (rise > 0) deepest = Math.max(deepest, distanceToRings(x, z, b.rings));
+    }
+    if (at.length < 10) continue;
+    if (steepShape(b.roofShape)) deepest = Math.min(deepest, STEEP_REACH);
+    let model = 0;
+    let flat = 0;
+    for (const c of at) {
+      model += Math.abs(c.h - roofSurfaceAt(c.x, c.z, b.rings, eave, rise, deepest));
+      flat += Math.abs(c.h - top);
+    }
+    roofModel.push(model / at.length);
+    roofFlat.push(flat / at.length);
+    const group = roofGroups.get(b.roofFrom ?? "nessuna") ?? { model: [], flat: [] };
+    group.model.push(model / at.length);
+    group.flat.push(flat / at.length);
+    roofGroups.set(b.roofFrom ?? "nessuna", group);
   }
 
   const a = engine.data.plate.analysis;
@@ -235,6 +276,7 @@ export async function benchmark(engine: Engine, offer: LidarOffer): Promise<Benc
     shadowHeights: fromShadows.length ? errorStats("ombra", fromShadows) : null,
     shadowRoof: fromShadowsRoof.length ? errorStats("ombra", fromShadowsRoof) : null,
     shadowFloors: floors ? { n: floors, held: floorsHeld } : null,
+    roofSurface: roofModel.length ? { n: roofModel.length, model: median(roofModel), flat: median(roofFlat), byFrom: Object.fromEntries([...roofGroups].map(([k, g]) => [k, { n: g.model.length, model: median(g.model), flat: median(g.flat) }])) } : null,
     shadow,
     canopy: maskScore(canopyFound, tall, unbuilt),
     canopyClear: maskScore(canopyFound, tall, clearOf(built, cols, rows, Math.max(1, Math.round(4 / step)))),

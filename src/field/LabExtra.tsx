@@ -689,6 +689,11 @@ function BenchTable({ bench }: { bench: BenchReport }) {
           </tbody>
         </table>
       )}
+      {bench.roofSurface && (
+        <p className="small">
+          Superficie dei tetti, su {bench.roofSurface.n} edifici: in media dista {bench.roofSurface.model.toFixed(2)} m dal rilievo, contro {bench.roofSurface.flat.toFixed(2)} m di un tetto piatto alla stessa altezza.
+        </p>
+      )}
       {bench.shadowFloors && (
         <p className="small">
           Ombre fermate dal palazzo di fronte: per {bench.shadowFloors.n} edifici danno un'altezza minima, che il laser conferma in {bench.shadowFloors.held} casi.

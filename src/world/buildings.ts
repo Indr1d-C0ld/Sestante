@@ -3,6 +3,7 @@ import type { CSM } from "three/addons/csm/CSM.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Building } from "../field/load.ts";
 import { PLATE_GLSL, PROJECT_GLSL, PROV_GLSL, shade } from "./shading.ts";
+import { distanceToRings, nearRectangle, STEEP_REACH, steepShape } from "../core/roofs.ts";
 
 const NAMED: Record<string, number> = {
   white: 0xece7dc, black: 0x2c2c2c, grey: 0x8f8f8c, gray: 0x8f8f8c, red: 0xa0463a, brown: 0x7a5a42, beige: 0xcbb99a, yellow: 0xd7bd6c,
@@ -180,6 +181,74 @@ function addFlatRoof(sink: Sink, rings: number[][], y: number, color: THREE.Colo
   const offset = sink.pos.length / 3;
   for (const p of all) sink.vert(p.x, y, p.y, 0, 1, 0, 0, 0, color, 1, 0, seed);
   for (const f of faces) sink.index.push(offset + f[0]!, offset + f[2]!, offset + f[1]!);
+}
+
+/**
+ * A roof over any footprint, holes included: the plan is triangulated, every triangle split in four the same number of
+ * times (shared edges split once, so there are no cracks), and each point raised with its distance from the nearest edge,
+ * up to `rise` at the footprint's deepest point. On a rectangle this is a hipped roof; on an L or around a courtyard it
+ * stays inside the outline.
+ */
+function addSurfaceRoof(sink: Sink, rings: number[][], eave: number, rise: number, color: THREE.Color, seed: number, edge = 4, reach = Infinity) {
+  const pts: number[] = [];
+  const boundary = new Set<string>();
+  const loops = rings.map((ring) => {
+    const first = pts.length / 2;
+    for (let i = 0; i < ring.length; i += 2) pts.push(ring[i]!, ring[i + 1]!);
+    const n = ring.length / 2;
+    for (let i = 0; i < n; i++) {
+      const a = first + i;
+      const b = first + ((i + 1) % n);
+      boundary.add(a < b ? `${a},${b}` : `${b},${a}`);
+    }
+    const loop: THREE.Vector2[] = [];
+    for (let i = 0; i < ring.length; i += 2) loop.push(new THREE.Vector2(ring[i], ring[i + 1]));
+    return loop;
+  });
+  let tris = THREE.ShapeUtils.triangulateShape(loops[0]!, loops.slice(1)).map((f) => [f[0]!, f[1]!, f[2]!]);
+  let longest = 0;
+  for (const [a, b, c] of tris) {
+    for (const [p, q] of [[a, b], [b, c], [c, a]] as const) longest = Math.max(longest, Math.hypot(pts[p * 2]! - pts[q * 2]!, pts[p * 2 + 1]! - pts[q * 2 + 1]!));
+  }
+  const depth = Math.max(0, Math.min(3, Math.ceil(Math.log2(Math.max(1, longest / edge)))));
+  const onEdge = new Set<number>();
+  for (const key of boundary) for (const v of key.split(",")) onEdge.add(Number(v));
+  for (let d = 0; d < depth; d++) {
+    const mids = new Map<string, number>();
+    const mid = (a: number, b: number) => {
+      const key = a < b ? `${a},${b}` : `${b},${a}`;
+      let m = mids.get(key);
+      if (m == null) {
+        m = pts.length / 2;
+        pts.push((pts[a * 2]! + pts[b * 2]!) / 2, (pts[a * 2 + 1]! + pts[b * 2 + 1]!) / 2);
+        mids.set(key, m);
+        if (boundary.has(key)) {
+          boundary.add(a < m ? `${a},${m}` : `${m},${a}`);
+          boundary.add(b < m ? `${b},${m}` : `${m},${b}`);
+          onEdge.add(m);
+        }
+      }
+      return m;
+    };
+    const next: number[][] = [];
+    for (const [a, b, c] of tris) {
+      const ab = mid(a, b);
+      const bc = mid(b, c);
+      const ca = mid(c, a);
+      next.push([a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca]);
+    }
+    tris = next;
+  }
+  const count = pts.length / 2;
+  const dist = new Float32Array(count);
+  let deepest = 0;
+  for (let i = 0; i < count; i++) {
+    dist[i] = onEdge.has(i) ? 0 : distanceToRings(pts[i * 2]!, pts[i * 2 + 1]!, rings);
+    deepest = Math.max(deepest, dist[i]!);
+  }
+  deepest = Math.min(deepest, reach);
+  const at = (i: number) => [pts[i * 2]!, eave + (deepest > 0 ? rise * Math.min(1, dist[i]! / deepest) : 0), pts[i * 2 + 1]!];
+  for (const [a, b, c] of tris) addRoofTri(sink, at(a), at(c), at(b), color, seed);
 }
 
 function centroid(ring: number[]) {
@@ -479,7 +548,11 @@ export function buildBuildings(buildings: Building[], csm: CSM | null, cell = 26
     const bucket = bucketOf(c.x, c.z);
     bucket.walls.stamp = bucket.roofs.stamp = [SOURCE_INDEX[building.source], Math.max(0.15, Math.min(1, building.confidence))];
     const yTop = building.top;
-    const eave = yTop - building.roofHeight;
+    // Steep roofs (mansards and the like) over a complex plan are drawn flat at the top: their surface subdivided over
+    // long slivers rippled, and a mansard's top is nearly flat anyway.
+    const rectangle = rings.length === 1 && nearRectangle(outer, building.area);
+    const flattened = steepShape(building.roofShape) && !rectangle;
+    const eave = flattened ? yTop : yTop - building.roofHeight;
     const groundRef = yTop - building.height;
     bucket.walls.groundY = bucket.roofs.groundY = groundRef;
     const floor = building.minHeight > 0 ? groundRef + building.minHeight : building.base - 2.5;
@@ -491,8 +564,15 @@ export function buildBuildings(buildings: Building[], csm: CSM | null, cell = 26
     }
     const shape = building.roofShape;
     const round = compact(outer) > 0.72;
-    if (shape === "gabled" || shape === "hipped" || shape === "half-hipped" || shape === "saltbox" || shape === "gambrel" || shape === "mansard") {
-      addLoftRoof(bucket.roofs, outer, eave, building.roofHeight, shape === "gabled" ? "gabled" : "hipped", color, seed);
+    if (flattened) {
+      addFlatRoof(bucket.roofs, rings, eave, color, seed);
+    } else if (steepShape(shape)) {
+      addSurfaceRoof(bucket.roofs, rings, eave, building.roofHeight, color, seed, 2.5, STEEP_REACH);
+    } else if (shape === "gabled" || shape === "hipped" || shape === "half-hipped" || shape === "saltbox") {
+      // The ridge along the long axis suits a near-rectangle; any other plan, or a courtyard, gets a roof that rises
+      // from every edge, so that it never spills past the outline.
+      if (rectangle) addLoftRoof(bucket.roofs, outer, eave, building.roofHeight, shape === "gabled" ? "gabled" : "hipped", color, seed);
+      else addSurfaceRoof(bucket.roofs, rings, eave, building.roofHeight, color, seed);
     } else if (shape === "dome" || shape === "onion" || shape === "round") {
       addRevolvedRoof(bucket.roofs, outer, eave, building.roofHeight, shape === "onion" ? "onion" : "dome", color, seed);
     } else if (shape === "cone" || shape === "pyramidal") {

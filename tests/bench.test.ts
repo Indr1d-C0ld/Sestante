@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { castShadows, fitSunAltitude, maskScore, resampleMask, type SurfaceGrid } from "../src/vision/bench.ts";
 import { describeLean, leanFrom, leanFromSurface } from "../src/vision/lean.ts";
+import { distanceToRings, nearRectangle, presumePitched, roofSurfaceAt } from "../src/core/roofs.ts";
 import { aboveLevels, storeyHeight } from "../src/core/storeys.ts";
 import { analyzePlate, asphaltShadowLevel, fillRing, greenCast, leafOn, shadowHeights, type Footprint } from "../src/vision/analyze.ts";
 
@@ -230,4 +231,19 @@ test("l'inclinazione di una ripresa si ritrova proiettando il rilievo sui bordi 
   assert.ok(lean.gain > 1.2);
   const said = describeLean(leanFrom(10, 97));
   assert.ok(Math.abs(said.tilt - 10) < 1e-9 && Math.abs(said.toward - 97) < 1e-9);
+});
+
+test("un tetto che sale dai bordi resta dentro la pianta e arriva al colmo nel punto più interno", () => {
+  // An L: two arms of 10 m.
+  const L = [[0, 0, 30, 0, 30, 10, 10, 10, 10, 30, 0, 30]];
+  assert.equal(roofSurfaceAt(0, 15, L, 10, 3, 5), 10);
+  assert.equal(roofSurfaceAt(5, 20, L, 10, 3, 5), 13);
+  assert.ok(Math.abs(roofSurfaceAt(5, 17.5, L, 10, 3, 5) - 13) < 1e-9);
+  assert.ok(Math.abs(distanceToRings(20, 5, L) - 5) < 1e-9);
+  assert.equal(nearRectangle([0, 0, 20, 0, 20, 10, 0, 10], 200), true);
+  assert.equal(nearRectangle(L[0]!, 500), false);
+  assert.equal(presumePitched(12, 300, false, false), true);
+  assert.equal(presumePitched(6, 300, false, false), false);
+  assert.equal(presumePitched(12, 3000, false, false), false);
+  assert.equal(presumePitched(12, 300, true, false), false);
 });

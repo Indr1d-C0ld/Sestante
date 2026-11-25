@@ -4,7 +4,7 @@
 ![Node 24 o più recente](https://img.shields.io/badge/node-24-339933?logo=node.js&logoColor=white)
 ![three.js](https://img.shields.io/badge/three.js-r187-black?logo=three.js)
 ![WebGL2](https://img.shields.io/badge/WebGL-2-990000?logo=webgl&logoColor=white)
-![Test](https://img.shields.io/badge/test-119-success)
+![Test](https://img.shields.io/badge/test-120-success)
 
 Scegli un riquadro di Terra. Sestante ne legge la ripresa satellitare, la ricostruisce in 3D e ti ci fa camminare dentro in prima persona, con la borsa di strumenti di un ricercatore sul campo e un registro che si scrive da solo.
 
@@ -68,7 +68,7 @@ Poi apri http://localhost:4173. Senza chiavi funziona già tutto ciò che usa fo
 | --- | --- |
 | `npm start` | Server di produzione sulla porta 4173, con la build in `dist/` |
 | `npm run dev` | Sviluppo con Vite e ricarica a caldo (usa anche la porta successiva) |
-| `npm test` | I 119 test, su scene sintetiche di cui si conosce la verità |
+| `npm test` | I 120 test, su scene sintetiche di cui si conosce la verità |
 | `npm run typecheck` | Controllo dei tipi |
 
 Variabili d'ambiente: `PORT` per la porta, `SESTANTE_DATA` per la cartella dei dati (predefinita `data/` nel progetto). Il server ascolta solo su `127.0.0.1`.
@@ -445,6 +445,33 @@ Ogni strumento è stato provato dove la risposta esiste già. I test automatici 
 | Foto da localizzare | Interno del Colosseo | "Ambiguo" o "impossibile", come deve |
 
 Le altre chiavi di lettura sono nel codice: `tests/` contiene le scene sintetiche, e ogni scheda del Laboratorio mostra su quante misure si regge ciò che dice.
+
+### Tetti
+
+Secondo il rilievo laser, sette edifici su dieci hanno un tetto con più di 1,5 m fra il colmo e la quota mediana: falde, mansarde, abbaini, parapetti. La mappa lo dice di rado, e nemmeno sempre bene: il 46% dei tetti segnati "piani" ha un dislivello. Prima, quasi ogni edificio era una scatola piatta all'altezza del colmo, quindi tutto il tetto stava alla quota del suo punto più alto. Ora:
+
+- **la forma scritta nella mappa vale sempre**; mansarde e simili salgono ripide per 2,5 m e sono quasi piane in cima;
+- **dove la mappa tace**, un edificio fra 8 m d'altezza e 1.000 m² di pianta, se la pianta è quasi rettangolare, riceve un tetto a padiglione presunto, alto un quarto della sua larghezza (fra 1,4 m e il 45% dell'altezza). È lo stesso tetto che già si dava alle tegole color terracotta, ora limitato anch'esso alle piante rettangolari;
+- **sulle piante complesse il tetto resta piatto.** Un tetto che sale da ogni bordo è stato provato: era il più vicino al rilievo, ma sugli isolati irregolari si increspava come un telo. Per la stessa ragione mansarde e simili, su piante complesse, si disegnano piane alla quota del colmo;
+- **la scheda dell'edificio dice da dove viene la forma:** mappa, colore della ripresa, dimensioni, oppure nessuna.
+
+Il banco di prova misura ora la distanza media fra la superficie dei tetti e il rilievo, cella per cella, e la confronta con tetti piatti alla stessa altezza:
+
+| Luogo | Tetti piatti | Modello | Tetti presunti: piatti, modello |
+| --- | --- | --- | --- |
+| Amsterdam | 2,69 m | 1,84 m | 2,55, 1,57 (329 edifici) |
+| Parigi | 4,04 m | 3,97 m | 4,04, 3,28 (105) |
+| Londra | 4,37 m | 4,06 m | 4,24, 3,64 (296) |
+| Zurigo | 2,65 m | 2,77 m | 2,50, 2,58 (205) |
+| Rotterdam | 3,55 m | 3,13 m | 4,61, 3,88 (83) |
+| Anversa, centro | 5,06 m | 5,05 m | 4,99, 4,92 (318) |
+| Anversa, sud-est | 4,30 m | 4,32 m | 4,28, 4,26 (586) |
+| Lione, Presqu'île | 5,58 m | 6,03 m | 7,03, 6,93 (103) |
+| Lione, riva sinistra | 5,07 m | 5,36 m | 8,17, 6,97 (87) |
+| Manchester, centro | 4,72 m | 4,68 m | 4,52, 4,40 (111) |
+| Manchester, sud | 3,86 m | 3,72 m | 6,51, 5,59 (70) |
+
+Il tetto presunto avvicina la superficie al rilievo in dieci riquadri su undici. Nell'insieme il modello fa meglio dei tetti piatti in sette. Peggiora a Zurigo e a Lione, e quasi tutto per la regola del colore e per le forme scritte nella mappa. Il motivo è che lì le altezze sono già sottostimate (a Lione di 5,8 m, vedi le altezze dai piani): un tetto a falde abbassa la superficie media e allarga l'errore. Va corretta l'altezza, non la forma.
 
 ### Inclinazione della ripresa
 

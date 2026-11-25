@@ -167,6 +167,8 @@ export type BenchReport = {
   shadowRoof?: { label: string; n: number; bias: number; typical: number; within3: number } | null;
   /** How many floors left by stopped shadows stay under the surveyed top. */
   shadowFloors?: { n: number; held: number } | null;
+  /** Median, over buildings, of the mean distance between the model's roof surface and the survey's; and a flat top's. */
+  roofSurface?: { n: number; model: number; flat: number; byFrom?: Record<string, { n: number; model: number; flat: number }> } | null;
   shadow: MaskScoreRow;
   canopy: MaskScoreRow;
   /** The same, only four metres or more from any mapped building, where what stands tall is mostly trees. */
