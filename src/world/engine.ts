@@ -371,7 +371,8 @@ export class Engine {
         if ((child as THREE.Mesh).geometry) (child as THREE.Mesh).geometry.dispose();
       });
     }
-    const built = buildBuildings(this.data.buildings.filter((building) => !this.absent.has(building.id)), this.csm);
+    // On WebGPU each draw costs the processor more than the GPU time it saves by culling: one block for the whole box.
+    const built = buildBuildings(this.data.buildings.filter((building) => !this.absent.has(building.id)), this.csm, this.gpu ? 1e6 : 260);
     this.buildingsGroup = built.group;
     this.world.add(built.group);
     this.syncCollisions();
@@ -574,7 +575,7 @@ export class Engine {
         if ((child as THREE.Mesh).geometry) (child as THREE.Mesh).geometry.dispose();
       });
     }
-    const built = buildBuildings(this.plate.masses, this.csm);
+    const built = buildBuildings(this.plate.masses, this.csm, this.gpu ? 1e6 : 260);
     this.massGroup = built.group;
     this.world.add(built.group);
   }

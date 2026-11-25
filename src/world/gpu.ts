@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial, PMREMGenerator, RenderPipeline, WebGPURenderer } from "three/webgpu";
 import { abs, cameraPosition, cameraViewMatrix, clamp, exp, float, Fn, getViewPosition, int, max, mix, mrt, normalView, output, pass, pmremTexture, positionWorld, screenUV, pow, select, smoothstep, texture, uniform, vec2, vec3, vec4 } from "three/tsl";
 import { ao } from "three/addons/tsl/display/GTAONode.js";
-import { bloom } from "three/addons/tsl/display/BloomNode.js";
+import { gaussianBlur } from "three/addons/tsl/display/GaussianBlurNode.js";
 import { CSMShadowNode } from "three/addons/csm/CSMShadowNode.js";
 import { SkyMesh } from "three/addons/objects/SkyMesh.js";
 import { PORTED } from "./gpuMaterials.ts";
@@ -183,11 +183,13 @@ export class GpuView {
     const pipeline = this.pipeline!;
     this.env = env;
     const scene = env ? this.aerialPerspective(this.shaded, this.depth, env) : this.shaded;
-    // Only what is well above white blooms: at a lower threshold the bright sky veiled the whole frame. Bloom is a dozen
-    // blur passes, nearly a fifth of the processor's time per frame: with the setting at zero it is left out altogether.
+    // Only what is well above white blooms: at a lower threshold the bright sky veiled the whole frame. three's BloomNode
+    // took a dozen passes and a fifth of the processor's time per frame; this is one wide Gaussian at a quarter of the
+    // resolution, two passes, and nothing at all with the setting at zero.
     if (this.bloomOn) {
-      this.bloomNode = bloom(scene, 0.05, 0.3, 1.4);
-      pipeline.outputNode = scene.add(this.bloomNode) as Any;
+      const bright = max(scene.rgb.sub(this.bloomThreshold), vec3(0));
+      this.bloomNode = gaussianBlur(vec4(bright, 1), null, 6, { resolutionScale: 0.25 });
+      pipeline.outputNode = vec4(scene.rgb.add(this.bloomNode.rgb.mul(this.bloomStrength)), scene.a) as Any;
     } else {
       this.bloomNode = null;
       pipeline.outputNode = scene as Any;
@@ -197,6 +199,8 @@ export class GpuView {
 
   private env: THREE.Texture | null = null;
   private bloomOn = true;
+  private bloomStrength = uniform(0.05);
+  private bloomThreshold = uniform(1.4);
   private frame = 0;
 
   /**
@@ -440,7 +444,7 @@ export class GpuView {
       this.bloomOn = wantBloom;
       this.compose(this.env);
     }
-    if (this.bloomNode) this.bloomNode.strength.value = look.bloom * 0.12;
+    this.bloomStrength.value = look.bloom * 0.5;
     this.staggerCascades();
     // The environment follows the sun, re-baked when it has moved half a degree.
     if (this.pmrem && this.envSky && this.envSun.angleTo(sun) > 0.009) {

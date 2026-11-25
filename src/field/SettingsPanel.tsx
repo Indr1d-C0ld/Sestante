@@ -4,6 +4,9 @@ import { PRESETS, type Settings } from "../world/settings.ts";
 import { WEATHER_PRESETS, type WeatherValues } from "../world/sim.ts";
 import { sunEvents } from "../core/solar.ts";
 
+/** The engine forced by ?motore= in the address, for this visit only. */
+const fromAddress = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("motore");
+
 /** Material keys of the WebGPU port report, as the explorer would name them. */
 const PART_NAMES: Record<string, string> = {
   ground: "terreno",
@@ -217,13 +220,15 @@ export function SettingsPanel({ engine, settings, onChange, onClose, onShotDay, 
                 </div>
                 <label className="setting">
                   <span>Renderer</span>
-                  <select value={settings.engine} onChange={(e) => set("engine", e.target.value as Settings["engine"])}>
+                  <select value={fromAddress ? (engine.gpu ? "webgpu" : "webgl2") : settings.engine} disabled={!!fromAddress} onChange={(e) => set("engine", e.target.value as Settings["engine"])}>
                     <option value="webgl2">WebGL2 (completo)</option>
                     <option value="webgpu">WebGPU (sperimentale)</option>
                   </select>
                 </label>
-                {new URLSearchParams(location.search).get("motore") ? (
-                  <p className="hint">Per questa visita il motore è scelto dall'indirizzo (motore={new URLSearchParams(location.search).get("motore")}).</p>
+                {fromAddress ? (
+                  <p className="hint">
+                    Per questa visita il motore lo sceglie l'indirizzo (motore={fromAddress}). La tua scelta salvata è {settings.engine === "webgpu" ? "WebGPU" : "WebGL2"}: vale quando apri il campo senza quel parametro.
+                  </p>
                 ) : (
                   settings.engine !== (engine.gpu ? "webgpu" : "webgl2") && <p className="hint">Il motore cambia al prossimo ingresso nel campo: ricarica la pagina.</p>
                 )}
