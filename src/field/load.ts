@@ -107,7 +107,9 @@ function parseMeters(value: string | undefined) {
  * taller ground floor. Measured, not assumed: on 887 buildings of Paris, London, Zurich and Amsterdam the laser's top stood
  * 3 to 4 m above floors x 3.2 m up to five floors, 2 m at six, 1 m from seven up, where roofs are flat more often.
  * Where the roof's own floors are mapped and counted at 2.8 m each, the top still stood 2 to 3 m higher (165 buildings in Zurich and Paris).
- * European cities only: where roofs are flat terraces this adds about two metres too many.
+ * Checked afterwards on 838 buildings of four cities not used to derive it (Rotterdam, Antwerp, Lyon, Manchester): the bias
+ * fell from -4.7 to -2.3 m and the typical error from 5.0 to 3.5 m. It improved six boxes of seven and worsened one; from
+ * city to city storeys differ by more than any single rule can follow, so this stays a prior and not a measure.
  */
 export function aboveLevels(levels: number, roofShape?: string, roofLevelsMapped = false) {
   if (roofShape === "flat") return 1;

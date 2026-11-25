@@ -399,7 +399,7 @@ Ogni strumento è stato provato dove la risposta esiste già. I test automatici 
 | Strumento | Caso | Risultato |
 | --- | --- | --- |
 | Altezze dalle ombre, più date | GEDI a Prati, Roma | Errore tipico 2,9 m, tendenza −0,7 m, su 42 impronte |
-| Altezze dai piani OSM | GEDI a Prati, poi LiDAR a Parigi, Londra e Zurigo | A Prati 5,2 m, tendenza −4,5 m, su 10 impronte. Con tetto e basamento aggiunti: da 1,4 a 2,2 m, tendenza da −0,2 a −1,3 m, su 879 edifici, gli stessi usati per ricavare la correzione |
+| Altezze dai piani OSM | GEDI a Prati, poi LiDAR a Parigi, Londra e Zurigo | A Prati 5,2 m, tendenza −4,5 m, su 10 impronte. Con tetto e basamento aggiunti: 3,5 m, tendenza −2,3 m, su 838 edifici di quattro città non usate per ricavare la correzione |
 | Altezza di una singola chioma | GEDI, tre zone di Roma | Correlazione circa zero: una foto dall'alto non la dà. Corretta per gruppi: da 9,4 a 5,9 m a Prati, su orbite escluse |
 | Intervallo delle altezze | GEDI, tre zone di Roma | 48 impronte su 54 dentro l'intervallo |
 | Volume da pianta e altezza | Piramide di Cheope | 2,42 milioni di m³ (2,33–2,51) contro 2,45 geometrici |
@@ -450,7 +450,20 @@ Quattro riquadri di 600 m, celle di 1 m, novembre 2026:
 | Londra | 382 | 2,9 m, −2,8 m | 2,2 m, −0,3 m |
 | Zurigo | 128 | 3,4 m, −3,2 m | 1,7 m, −1,3 m |
 
-  La correzione è stata ricavata e misurata sugli stessi edifici: questi numeri dicono che descrive bene quei tre quartieri, non che valga altrove. Sono città europee con tetti a falde o mansarde; dove i tetti sono terrazze piane aggiunge circa due metri di troppo, e la misura di Prati, fatta prima, non è stata ripetuta. Ne beneficiano anche le stime per quartiere (a Zurigo da 4,5 m a 3,2 m di scarto tipico) e le letture dalle ombre, che su quegli edifici si tarano.
+  Quei numeri vengono dagli stessi edifici che hanno generato la correzione, quindi non la provano. La prova è stata fatta dopo, su sette riquadri di quattro città mai usate, 838 edifici interi (le parti di edificio sono escluse, perché non ricevono la correzione):
+
+| Luogo | Edifici | Piani × 3,2 m: tendenza, scarto tipico | Con tetto e basamento |
+| --- | --- | --- | --- |
+| Rotterdam, centro | 72 | −2,1 m, 2,1 m | −1,1 m, 1,2 m |
+| Anversa, centro | 51 | −5,4 m, 5,4 m | −2,8 m, 3,2 m |
+| Anversa, sud-est | 115 | −2,6 m, 3,1 m | −0,4 m, 1,9 m |
+| Lione, Presqu'île | 158 | −7,9 m, 7,9 m | −5,8 m, 5,8 m |
+| Lione, riva sinistra | 256 | −4,6 m, 4,8 m | −2,7 m, 3,2 m |
+| Manchester, centro | 107 | −5,8 m, 5,8 m | −3,1 m, 3,4 m |
+| Manchester, sud | 79 | +0,9 m, 1,1 m | +3,9 m, 3,9 m |
+| **Insieme** | **838** | **−4,7 m, 5,0 m** | **−2,3 m, 3,5 m** |
+
+  La correzione va nel verso giusto in sei riquadri su sette e dimezza la tendenza, ma non la chiude: nei centri storici di Lione e Manchester i piani sono alti più di 4 m, mentre a sud di Manchester, dove i piani sono bassi, peggiora. Altre regole provate (piani più alti, aggiunte diverse), tarate su un gruppo di città e giudicate sull'altro, non fanno meglio sull'insieme: fra una città e l'altra l'altezza di un piano cambia più di quanto una regola sola possa seguire. Per questo l'errore dichiarato per le altezze dai piani è 3,5 m con 2,3 m di tendenza comune, quello misurato qui, e dove esiste un LiDAR conviene prendere le altezze dal laser. La misura di Prati, fatta prima, non è stata ripetuta. Ne beneficiano anche le stime per quartiere (a Zurigo da 4,5 m a 3,2 m di scarto tipico) e le letture dalle ombre, che su quegli edifici si tarano.
 - **Altezze minime.** Un minimo deve sbagliare per difetto: usa la pendenza più bassa fra quella del sole e quella tarata. Il laser lo conferma in 588 casi su 624.
 
 - **Dominante di colore.** Le lastre di Parigi e Londra sono verdastre: l'indice di verde dell'asfalto valeva 0,14 e 0,10 contro 0,02 ad Amsterdam, e circa il 60% dei pixel passava per vegetazione, strade comprese. Ora la dominante si misura su strade e tetti mappati, che vegetazione non sono, fascia per fascia di luminosità, e si sottrae. A Parigi la vegetazione scende dal 62 al 25% della lastra, la direzione letta del sole passa da 137° a 148° (il laser indica circa 153°) e il sole letto dagli edifici da 58° a 45°.
