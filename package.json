@@ -8,9 +8,9 @@
   "author": "Indrid Cold",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Indr1d-C0ld/sestante.git"
+    "url": "https://github.com/Indr1d-C0ld/Sestante.git"
   },
-  "homepage": "https://github.com/Indr1d-C0ld/sestante#readme",
+  "homepage": "https://github.com/Indr1d-C0ld/Sestante#readme",
   "engines": {
     "node": ">=24"
   },

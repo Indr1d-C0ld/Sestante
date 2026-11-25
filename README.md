@@ -55,7 +55,7 @@ Sviluppato e provato su Debian 13 con una RTX 3060 e driver Nouveau, in Chromium
 ## Installazione
 
 ```bash
-git clone https://github.com/Indr1d-C0ld/sestante.git
+git clone https://github.com/Indr1d-C0ld/Sestante.git
 cd sestante
 npm ci
 npm run build
@@ -118,7 +118,7 @@ sudo install -d -o "$USER" -g "$USER" /opt/sestante
 ```
 
 ```bash
-git clone https://github.com/Indr1d-C0ld/sestante.git /opt/sestante
+git clone https://github.com/Indr1d-C0ld/Sestante.git /opt/sestante
 ```
 
 ```bash
