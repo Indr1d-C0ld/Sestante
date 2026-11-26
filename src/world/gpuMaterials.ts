@@ -2,7 +2,14 @@ import * as THREE from "three";
 import { MeshStandardNodeMaterial } from "three/webgpu";
 import {
   abs,
+  asin,
+  atan,
   attribute,
+  clamp,
+  cos,
+  normalWorld,
+  select,
+  tan,
   cameraPosition,
   cameraViewMatrix,
   dot,
@@ -39,6 +46,46 @@ import type { GpuView } from "./gpu.ts";
 type Any = any; // eslint-disable-line @typescript-eslint/no-explicit-any -- TSL nodes are untyped chains
 type Port = (view: GpuView, source: THREE.Material) => THREE.Material;
 
+/**
+ * PROJECT_GLSL of shading.ts: a photograph thrown onto the world from where it was taken, as a slide projector would, faded
+ * with distance and on surfaces seen edge-on from the camera's position. `n` is the world normal.
+ */
+export function projectPhoto(view: GpuView, base: Any, p: Any, n: Any): Any {
+  const b = view.bridge;
+  const az = b.value("uProjAz");
+  const range = b.value("uProjRange");
+  const d = p.sub(b.value("uProjPos"));
+  const r = d.length().max(0.001);
+  const fade = float(1).sub(smoothstep(range.mul(0.7), range, r)).mul(smoothstep(0.02, 0.22, dot(n, d.negate().div(r))));
+  const pano = b.value("uProjPano").greaterThan(0.5);
+  const turn = atan(d.x, d.z.negate()).sub(az);
+  const uvPano = vec2(fract(turn.div(6.2831853).add(0.5)), asin(clamp(d.y.div(r), -1, 1)).div(3.1415927).add(0.5));
+  const ahead = dot(d, vec3(sin(az), 0, cos(az).negate()));
+  const side = dot(d, vec3(cos(az), 0, sin(az)));
+  const t = tan(b.value("uProjFov").mul(0.00872665));
+  const z = ahead.max(0.2);
+  const uvFlat = vec2(side.div(z).div(t), d.y.div(z).div(t).mul(b.value("uProjAspect"))).mul(0.5).add(0.5);
+  const inFrame = step(0.2, ahead).mul(step(0, uvFlat.x)).mul(step(uvFlat.x, 1)).mul(step(0, uvFlat.y)).mul(step(uvFlat.y, 1));
+  const photo = b.sample("uProjTex", select(pano, uvPano, uvFlat)).rgb;
+  const weight = fade.mul(b.value("uProjMix")).mul(select(pano, float(1), inFrame)).mul(step(0.5, b.value("uProjOn")));
+  return mix(base, photo, weight);
+}
+
+/** PROV_GLSL: mapped or measured in blue, read from shadows in orange, presumed in green and hatched, so colour never works alone. */
+export function provColor(k: Any, conf: Any, p: Any): Any {
+  const sure = conf.mul(0.45).add(0.55);
+  const hatch = step(0.5, fract(p.x.add(p.y).add(p.z).mul(0.5)));
+  const presumed = vec3(0.01, 0.342, 0.162).mul(hatch.mul(0.55).add(0.45));
+  return select(k.lessThan(1.5), vec3(0.041, 0.242, 0.783).mul(sure), select(k.lessThan(3.5).or(k.greaterThan(5.5)), vec3(0.694, 0.1, 0.019).mul(sure), presumed));
+}
+
+/** LAYERS_NORMAL of buildings.ts: the projected photograph, then the provenance colours when they are switched on. */
+export function buildingLayers(view: GpuView, base: Any): Any {
+  const projected = projectPhoto(view, base, positionWorld, normalWorld);
+  const prov = attribute("aProv", "vec2");
+  return select(view.bridge.value("uProv").greaterThan(0.5), provColor(prov.x, prov.y, positionWorld), projected);
+}
+
 const hash21 = Fn(([p]: Any[]) => {
   const q: Any = fract(p.mul(vec2(123.34, 456.21)));
   const r = q.add(dot(q, q.add(45.32)));
@@ -47,7 +94,7 @@ const hash21 = Fn(([p]: Any[]) => {
 
 /**
  * Facades of buildings.ts WALL_MAP: five styles, windows lit at night, recesses darker. Every style is worked out and the
- * right one picked, so glass and recess can feed roughness, metalness and emission too. Projection and provenance not yet.
+ * right one picked, so glass and recess can feed roughness, metalness and emission too; then projection and provenance.
  */
 function walls(view: GpuView, source: THREE.Material) {
   const b = view.bridge;
@@ -110,13 +157,15 @@ function walls(view: GpuView, source: THREE.Material) {
   let c: Any = pick(c0, c1, c2, c3, c4);
   // Weather stains grow from the ground; openings hold no sky, so recesses stay dark.
   c = c.mul(mix(float(0.68), float(1), smoothstep(0, 2.8, aM.y))).mul(mix(float(1), float(0.42), recess));
-  m.colorNode = c;
+  m.colorNode = buildingLayers(view, c);
   // The GLSL original dims the glass's whole reflection; a standard material cannot, so the glass reflects less instead.
-  m.roughnessNode = mix(float(0.86), float(0.22), step(0.5, glass)) as Any;
-  m.metalnessNode = mix(float(0), float(0.25), step(0.5, glass)) as Any;
+  // With the provenance colours on, the facade is one flat colour: no glass, no lit windows.
+  const plain = step(0.5, b.value("uProv")).oneMinus();
+  m.roughnessNode = mix(float(0.86), float(0.22), step(0.5, glass).mul(plain)) as Any;
+  m.metalnessNode = mix(float(0), float(0.25), step(0.5, glass).mul(plain)) as Any;
   m.emissiveNode = vec3(1.7, 1.15, 0.66)
     .mul(b.value("uNight"))
-    .mul(step(0.5, lit))
+    .mul(step(0.5, lit).mul(plain))
     .mul(hash21(floor(aM.div(vec2(3, floorH))).add(seed)).mul(0.8).add(0.5)) as Any;
   return m;
 }
@@ -225,7 +274,19 @@ function bars() {
   return m;
 }
 
+/** The flood tool's sheet of water: translucent, with drifting ripples in its normal, as in engine.ts setFlood. */
+function flood(view: GpuView) {
+  const b = view.bridge;
+  const m = new MeshStandardNodeMaterial({ color: 0x2f5560, roughness: 0.09, metalness: 0.05, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+  const t = b.value("uTime");
+  const p = positionWorld.xz.mul(0.05);
+  const w = vec2(b.sample("uNoise", p.add(t.mul(vec2(0.006, 0.004)))).a, b.sample("uNoise", p.sub(t.mul(vec2(0.004, 0.007)))).a).sub(0.5);
+  m.normalNode = normalize(normalView.add(cameraViewMatrix.mul(vec4(w.x.mul(0.16), 0, w.y.mul(0.16), 0)).xyz)) as Any;
+  return m;
+}
+
 export const PORTED: Record<string, Port> = {
+  flood,
   ground: (view) => view.groundMaterial(),
   roofs: (view, source) => view.roofMaterial(source),
   far: (view, source) => view.standIn(source),

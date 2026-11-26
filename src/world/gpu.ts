@@ -1,11 +1,11 @@
 import * as THREE from "three";
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial, PMREMGenerator, RenderPipeline, WebGPURenderer } from "three/webgpu";
-import { abs, attribute, cameraPosition, cameraViewMatrix, clamp, exp, float, Fn, getViewPosition, int, max, mix, mrt, normalView, output, pass, pmremTexture, positionWorld, screenUV, pow, select, smoothstep, texture, uniform, vec2, vec3, vec4 } from "three/tsl";
+import { abs, attribute, cameraPosition, cameraViewMatrix, clamp, dot, exp, float, Fn, getViewPosition, int, max, mix, mrt, normalView, normalWorld, output, pass, pmremTexture, positionWorld, screenUV, pow, select, smoothstep, texture, uniform, vec2, vec3, vec4 } from "three/tsl";
 import { ao } from "three/addons/tsl/display/GTAONode.js";
 import { gaussianBlur } from "three/addons/tsl/display/GaussianBlurNode.js";
 import { CSMShadowNode } from "three/addons/csm/CSMShadowNode.js";
 import { SkyMesh } from "three/addons/objects/SkyMesh.js";
-import { PORTED } from "./gpuMaterials.ts";
+import { buildingLayers, PORTED, projectPhoto } from "./gpuMaterials.ts";
 import { GROUND_LAYERS } from "./ground.ts";
 import { U } from "./shading.ts";
 
@@ -18,11 +18,21 @@ import { U } from "./shading.ts";
 
 type Any = any; // eslint-disable-line @typescript-eslint/no-explicit-any -- TSL nodes are untyped chains
 
-const PLACEHOLDER = (() => {
-  const t = new THREE.DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1);
-  t.needsUpdate = true;
+/**
+ * A blank texture for each of U's names until the real one arrives. One per name, not one shared: nodes sampling the same
+ * texture object share a binding in the compiled shader, so a projected photo arriving later was read through the
+ * time-travel plate's empty slot and never showed.
+ */
+const placeholders = new Map<string, THREE.Texture>();
+const placeholder = (name: string) => {
+  let t = placeholders.get(name);
+  if (!t) {
+    t = new THREE.DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1);
+    t.needsUpdate = true;
+    placeholders.set(name, t);
+  }
   return t;
-})();
+};
 
 /** TSL uniforms mirroring U, synced once a frame: the WebGL2 code keeps writing U as before. */
 class Bridge {
@@ -41,7 +51,7 @@ class Bridge {
 
   /** A sample of one of U's textures; every sample is kept so a later swap of the texture reaches all of them. */
   sample(name: keyof typeof U, uv: Any, bias?: Any): Any {
-    const current = (U[name].value as THREE.Texture | null) ?? PLACEHOLDER;
+    const current = (U[name].value as THREE.Texture | null) ?? placeholder(name);
     let node = texture(current, uv);
     if (bias) node = node.bias(bias);
     const list = this.textures.get(name) ?? [];
@@ -57,7 +67,7 @@ class Bridge {
       else if (v instanceof THREE.Vector2 || v instanceof THREE.Vector3) node.value.copy(v);
     }
     for (const [name, nodes] of this.textures) {
-      const t = (U[name as keyof typeof U].value as THREE.Texture | null) ?? PLACEHOLDER;
+      const t = (U[name as keyof typeof U].value as THREE.Texture | null) ?? placeholder(name);
       for (const node of nodes) if (node.value !== t) node.value = t;
     }
   }
@@ -374,7 +384,9 @@ export class GpuView {
     const grid = b.value("uGrid");
     const g = abs(xz.div(100).add(0.5).fract().sub(0.5)).mul(100);
     color = mix(color, vec3(0.95, 0.55, 0.2), smoothstep(0, 0.9, g.x.min(g.y)).oneMinus().mul(0.75).mul(grid));
-    m.colorNode = select(water, albedo.mul(0.62), color) as Any;
+    // The projected photograph, then, with the provenance colours on, the ground greyed so that buildings stand out.
+    const shown = projectPhoto(this, select(water, albedo.mul(0.62), color), positionWorld, normalWorld);
+    m.colorNode = select(b.value("uProv").greaterThan(0.5), vec3(dot(shown, vec3(0.3, 0.55, 0.15))).mul(0.8), shown) as Any;
 
     const rough = mix(mix(mix(float(0.92), float(0.78), paved), float(0.98), veg), ground.a, close);
     m.roughnessNode = select(water, float(0.07), rough) as Any;
@@ -403,7 +415,7 @@ export class GpuView {
       const { albedo } = this.plateAlbedo(positionWorld.xz.add(b.value("uLean").mul(above)), float(0));
       const d = cameraPosition.sub(positionWorld).length();
       const n = b.sample("uNoise", positionWorld.xz.mul(0.47)).a;
-      return albedo.mul(mix(float(1), n.mul(0.3).add(0.85), float(1).sub(smoothstep(15, 120, d)).mul(b.value("uDetail"))));
+      return buildingLayers(this, albedo.mul(mix(float(1), n.mul(0.3).add(0.85), float(1).sub(smoothstep(15, 120, d)).mul(b.value("uDetail")))));
     })();
     return m;
   }
