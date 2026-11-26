@@ -96,7 +96,20 @@ Differenze ancora visibili: il chiarore verso il sole è più debole, perché il
 - il bagliore è una sola sfocatura larga a un quarto della risoluzione, e con l'impostazione a zero non viene eseguito;
 - gli edifici sono un unico blocco invece di uno per ogni quadrato di 260 m: da 71 a 47 oggetti da disegnare.
 
-Su una RTX 3060, a 1400×820, con la versione installata e senza il limite dello schermo, nelle stesse condizioni, un fotogramma di Zurigo dura 2,2 ms col motore WebGL2. Col motore WebGPU dura 3,4 ms (prima di queste modifiche 5,25). Il divario è sceso da 2,4 a circa 1,5 volte. I valori assoluti cambiano col carico della macchina, quindi vanno confrontati solo dentro la stessa serie. Il motore WebGL2 resta il predefinito finché quello nuovo non lo eguaglia su misure e schermate.
+Su una RTX 3060, a 1400×820, con la versione installata e senza il limite dello schermo, nelle stesse condizioni, un fotogramma di Zurigo dura 2,2 ms col motore WebGL2. Col motore WebGPU dura 3,4 ms (prima di queste modifiche 5,25). Il divario è sceso da 2,4 a circa 1,5 volte. I valori assoluti cambiano col carico della macchina, quindi vanno confrontati solo dentro la stessa serie.
+
+Con tutto portato, tempo atmosferico compreso, la misura è stata ripetuta su quattro città (Zurigo, Parigi, Londra, Lione), dal drone e dalla strada, in due serie con i motori alternati. Durata mediana di un fotogramma: 3,4 ms col motore WebGL2, 4,3 ms col motore WebGPU, 1,26 volte tanto (da 1,19 a Zurigo e Londra a 1,34 a Lione). Le schermate mostravano invece una differenza che contava: nel motore WebGPU la città era molto più scura, con le facciate in ombra quasi nere viste dal drone. La luce diffusa del cielo era tarata a occhio sul solo riquadro di Zurigo. Ora è tarata sulla luminosità della città in quattro viste, Parigi e Zurigo dal drone, Lione e Londra dalla strada: ambiente da 0,35 a 0,6, luce del cielo da 0,08 a 0,2, occlusione ambientale ai tre quarti dell'impostazione, perché quella di WebGPU ha un raggio fisso mentre quella del motore WebGL2 si allarga e si attenua con la distanza.
+
+| Vista | WebGL2 | WebGPU, prima | WebGPU, ora |
+| --- | --- | --- | --- |
+| Parigi, drone | 102 | 57 | 85 |
+| Zurigo, drone | 115 | 96 | 123 |
+| Lione, strada | 114 | 79 | 109 |
+| Londra, strada | 118 | 58 | 106 |
+
+I valori sono la mediana della luminosità dell'immagine sulla città, da 0 a 255. Una prova che aggiungeva all'ambiente il riflesso del suolo, pensando che il cielo di three.js fosse nero sotto l'orizzonte, ha scurito tutto ed è stata tolta. Resta più scura la parete in ombra di Londra.
+
+La stessa verifica ha trovato un difetto più grave: di notte il motore WebGPU disegnava il cielo con la luna al posto del sole, cioè un cielo di giorno, e con l'esposizione della notte la scena diventava bianca. Ora il cielo segue sempre il sole, e la luna dà soltanto la sua luce, fredda. Di notte la scena resta un po' più chiara di quella del motore WebGL2, e le finestre accese si notano meno. Il motore WebGL2 resta il predefinito finché quello nuovo non lo eguaglia anche in queste ultime differenze.
 
 ### Segmentazione con rete neurale, facoltativa
 

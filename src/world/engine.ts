@@ -1422,7 +1422,7 @@ export class Engine {
     this.precip.update(this.camera, w.rain, w.snow, U.uWindVec.value.clone().multiplyScalar(w.wind), gpu.skyLight.clone().multiplyScalar(0.95));
     gpu.setCloudBase(this.data.terrain.min);
     gpu.convert(this.scene);
-    gpu.render(dirIsMoon ? this.moon : sun, intensity, this.exposure * s.exposure, { ao: s.ao, bloom: s.bloom, visibility: w.visibility, aerial: s.aerial });
+    gpu.render(dirIsMoon ? this.moon : sun, intensity, this.exposure * s.exposure, { ao: s.ao, bloom: s.bloom, visibility: w.visibility, aerial: s.aerial }, sun);
     this.lastInfo = gpu.info();
   }
 

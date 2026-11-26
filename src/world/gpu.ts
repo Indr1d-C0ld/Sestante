@@ -73,6 +73,8 @@ class Bridge {
   }
 }
 
+const MOONLIGHT = new THREE.Color(0.62, 0.7, 0.88);
+
 /** `reason` says why WebGL2 draws when it does: the browser has no WebGPU, its WebGPU is software only, or it was asked. */
 export type GpuReport = { backend: "WebGPU" | "WebGL2" | "in avvio"; reason: string | null; ported: string[]; missing: string[]; hidden: string[] };
 
@@ -474,33 +476,43 @@ export class GpuView {
   }
 
   /** Sun, sky, haze and exposure for one frame, then the scene through the pipeline. */
-  render(sun: THREE.Vector3, intensity: number, exposure: number, look: { ao: number; bloom: number; visibility: number; aerial: number } = { ao: 0.8, bloom: 0.45, visibility: 30000, aerial: 1 }) {
+  /**
+   * `light` is where the direct light comes from, the moon at night; `skySun` is the sun itself, which the sky and the
+   * environment follow. Drawing the sky with the moon as its sun put a daylight sky over the night, and with the night's
+   * exposure the whole scene went white.
+   */
+  render(light: THREE.Vector3, intensity: number, exposure: number, look: { ao: number; bloom: number; visibility: number; aerial: number } = { ao: 0.8, bloom: 0.45, visibility: 30000, aerial: 1 }, skySun: THREE.Vector3 = light) {
+    const sun = skySun;
     this.bridge.sync();
     (this.sky as Any).sunPosition.value.copy(sun);
     const up = Math.max(0, sun.y);
     // A cheap stand-in for the sky model's colours until the atmosphere is ported: warmer and dimmer near the horizon.
     this.sunColor.setRGB(1, 0.72 + 0.26 * Math.min(1, up * 3), 0.5 + 0.45 * Math.min(1, up * 2.5));
-    this.sunLight.color.copy(this.sunColor);
+    // Moonlight is cold and white, not the setting sun's orange.
+    this.sunLight.color.copy(light === skySun ? this.sunColor : MOONLIGHT);
     this.sunLight.intensity = intensity;
     // Lit from above by the sun and from all round by the sky; under the AgX tone mapping as everything else.
     this.cloudLight.value.copy(this.sunColor).multiplyScalar(0.35 + 0.6 * Math.min(1, up * 3)).lerp(this.greyLight.value, 0.3);
     this.clouds?.position.copy(this.camera.position);
     this.clouds?.scale.setScalar(this.camera.far * 0.9);
     this.cloudTop.value = this.cloudBase + 2800;
-    this.sunLight.position.copy(this.camera.position).addScaledVector(sun, 1500);
+    this.sunLight.position.copy(this.camera.position).addScaledVector(light, 1500);
     this.sunLight.target.position.copy(this.camera.position);
     this.sunLight.target.updateMatrixWorld();
     const renderer = this.renderer;
     if (!renderer) return;
     // Tuned by eye against the WebGL2 engine on the Zurich test box: three's sky and AgX sit brighter than the own chain.
     renderer.toneMappingExposure = exposure * 0.6;
-    // Under thick cloud the sky gives far less light, and puddles reflect a dull grey.
-    this.scene.environmentIntensity = 0.35 * (1 - 0.55 * (U.uCloud.value as number));
+    // The sky's fill light, dimmer under thick cloud (puddles then reflect a dull grey). Matched to the WebGL2 engine by the
+    // brightness of the city on four boxes (Paris and Zurich from the drone, Lyon and London from the street): at 0.35 the
+    // median sat 15 to 60 levels darker and facades in shade stood near black; now within about 15 either way.
+    this.scene.environmentIntensity = 0.6 * (1 - 0.55 * (U.uCloud.value as number));
     this.visibility.value = look.visibility;
     this.aerial.value = look.aerial;
     this.grey.value = look.visibility < 12000 ? 1 : THREE.MathUtils.smoothstep(25000 - look.visibility, 8000, 24000);
     this.greyLight.value.setRGB(0.55 + 0.25 * up, 0.58 + 0.24 * up, 0.64 + 0.2 * up);
-    this.aoStrength.value = look.ao;
+    // GTAO keeps a fixed radius where the WebGL2 engine's widens and fades with distance: three quarters of the setting.
+    this.aoStrength.value = look.ao * 0.75;
     const wantBloom = look.bloom > 0.01;
     if (wantBloom !== this.bloomOn && this.pipeline) {
       this.bloomOn = wantBloom;
@@ -526,7 +538,7 @@ export class GpuView {
       if (this.hazeNode) this.hazeNode.value = this.envTarget.texture;
       else this.compose(this.envTarget.texture);
     }
-    this.hemi.intensity = 0.08;
+    this.hemi.intensity = 0.2;
     if (this.pipeline) this.pipeline.render();
     else renderer.render(this.scene, this.camera);
   }
