@@ -73,9 +73,9 @@ Poi apri http://localhost:4173. Senza chiavi funziona già tutto ciò che usa fo
 
 Variabili d'ambiente: `PORT` per la porta, `SESTANTE_DATA` per la cartella dei dati (predefinita `data/` nel progetto). Il server ascolta solo su `127.0.0.1`.
 
-### Motore WebGPU, sperimentale
+### Motore WebGPU
 
-Accanto al motore WebGL2 sta nascendo un motore WebGPU, scelto in **Regola → Motore grafico → Renderer** e attivo dal prossimo ingresso nel campo; per una sola visita basta aggiungere `&motore=webgpu` all'indirizzo. Dove il browser non offre WebGPU lo stesso motore disegna tramite WebGL2, e la stessa scheda dice quale dei due sta lavorando e perché.
+Il campo ha due motori. La scelta predefinita è **Automatico**: il motore WebGPU dove il browser offre WebGPU su una scheda grafica vera, il motore WebGL2 altrove. Si cambia in **Regola → Motore grafico → Renderer**, e vale dal prossimo ingresso nel campo; per una sola visita basta aggiungere `&motore=webgpu` o `&motore=webgl2` all'indirizzo. Chi sceglie WebGPU in un browser che non lo offre ottiene lo stesso motore disegnato tramite WebGL2, e la scheda del motore dice quale dei due sta lavorando e perché. La scelta automatica invece, dove WebGPU manca o è solo in software, usa direttamente il motore WebGL2, che è la strada più provata. Chi aveva già salvato le impostazioni prima di questa versione ha salvato anche WebGL2, e lo tiene finché non sceglie altro.
 
 - **Firefox:** WebGPU è spento per impostazione predefinita. Si accende in `about:config` con `dom.webgpu.enabled` a `true`; così Firefox ESR 153 su Linux disegna il motore sulla scheda grafica (provato su una RTX 3060 col driver NVIDIA).
 - **Chromium:** va avviato con `--enable-unsafe-webgpu --enable-features=Vulkan,WebGPU`.
@@ -115,7 +115,7 @@ I valori sono la mediana della luminosità dell'immagine sulla città, da 0 a 25
 
 La stessa verifica ha trovato un difetto più grave: di notte il motore WebGPU disegnava il cielo con la luna al posto del sole, cioè un cielo di giorno, e con l'esposizione della notte la scena diventava bianca. Ora il cielo segue sempre il sole, e la luna dà soltanto la sua luce, fredda. La luce del cielo, che era la stessa a mezzogiorno e a mezzanotte, ora cala col sole e risale con la luna.
 
-Restano differenze minori: le ombre più profonde di una via sono ancora più scure, le finestre accese di notte sono punti netti invece che aloni caldi sulle facciate, e il motore è 1,26 volte più lento. Il motore WebGL2 resta il predefinito.
+Restano differenze minori: le ombre più profonde di una via sono ancora più scure, le finestre accese di notte sono punti netti invece che aloni caldi sulle facciate, e il motore è 1,26 volte più lento, ma a 4,3 ms per fotogramma. Con queste differenze il motore WebGPU è diventato quello predefinito dove il browser lo offre.
 
 ### Segmentazione con rete neurale, facoltativa
 

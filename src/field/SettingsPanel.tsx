@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Engine } from "../world/engine.ts";
+import { gpuAvailable, type Engine } from "../world/engine.ts";
 import { PRESETS, type Settings } from "../world/settings.ts";
 import { WEATHER_PRESETS, type WeatherValues } from "../world/sim.ts";
 import { sunEvents } from "../core/solar.ts";
@@ -221,16 +221,17 @@ export function SettingsPanel({ engine, settings, onChange, onClose, onShotDay, 
                 <label className="setting">
                   <span>Renderer</span>
                   <select value={fromAddress ? (engine.gpu ? "webgpu" : "webgl2") : settings.engine} disabled={!!fromAddress} onChange={(e) => set("engine", e.target.value as Settings["engine"])}>
-                    <option value="webgl2">WebGL2 (completo)</option>
-                    <option value="webgpu">WebGPU (sperimentale)</option>
+                    <option value="auto">Automatico: WebGPU dove il browser lo offre</option>
+                    <option value="webgpu">WebGPU</option>
+                    <option value="webgl2">WebGL2</option>
                   </select>
                 </label>
                 {fromAddress ? (
                   <p className="hint">
-                    Per questa visita il motore lo sceglie l'indirizzo (motore={fromAddress}). La tua scelta salvata è {settings.engine === "webgpu" ? "WebGPU" : "WebGL2"}: vale quando apri il campo senza quel parametro.
+                    Per questa visita il motore lo sceglie l'indirizzo (motore={fromAddress}). La tua scelta salvata è {settings.engine === "auto" ? "automatica" : settings.engine === "webgpu" ? "WebGPU" : "WebGL2"}: vale quando apri il campo senza quel parametro.
                   </p>
                 ) : (
-                  settings.engine !== (engine.gpu ? "webgpu" : "webgl2") && <p className="hint">Il motore cambia al prossimo ingresso nel campo: ricarica la pagina.</p>
+                  (settings.engine === "auto" ? (gpuAvailable() ? "webgpu" : "webgl2") : settings.engine) !== (engine.gpu ? "webgpu" : "webgl2") && <p className="hint">Il motore cambia al prossimo ingresso nel campo: ricarica la pagina.</p>
                 )}
                 {engine.gpu && (
                   <p className="hint">

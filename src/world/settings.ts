@@ -1,7 +1,7 @@
 export type Settings = {
   preset: string;
-  /** Which renderer draws the field: chosen when the field opens. */
-  engine: "webgl2" | "webgpu";
+  /** Which renderer draws the field, chosen when the field opens. "auto": WebGPU where the browser offers it on a real GPU. */
+  engine: "auto" | "webgl2" | "webgpu";
   renderScale: number;
   dynamicRes: boolean;
   targetFps: number;
@@ -73,7 +73,7 @@ export const PRESETS: Record<string, PresetValues> = {
 
 export const DEFAULT_SETTINGS: Settings = {
   preset: "Bilanciata",
-  engine: "webgl2",
+  engine: "auto",
   ...PRESETS.Bilanciata!,
   dynamicRes: true,
   targetFps: 40,

@@ -5,7 +5,7 @@ import { compassName, formatLatLon } from "../core/geo.ts";
 import { sunPosition } from "../core/solar.ts";
 import { plateKey, plateLabel, type Expedition, type FieldSpec, type Hypothesis, type MapOverlay, type Note, type NoteKind, type PhotoPlacement, type Pin, type PlateRef, type PlateVersion, type SavedStudy } from "../core/types.ts";
 import type { ShadowPlate } from "../vision/shadowTest.ts";
-import { Engine, type Snapshot } from "../world/engine.ts";
+import { Engine, probeGpu, type Snapshot } from "../world/engine.ts";
 import { loadSettings, saveSettings, type Settings } from "../world/settings.ts";
 import { describeState, describeWmo } from "../world/sim.ts";
 import { detectChanges, type ChangeCluster } from "../vision/filters.ts";
@@ -180,6 +180,7 @@ export function FieldScreen({ expedition: initial, canvas, findings, study, onEx
       setSteps((rows) => [...rows, "Costruisco il mondo"].slice(-9));
       await new Promise((resolve) => setTimeout(resolve, 30));
       rereadRef.current = rereadCtx;
+      await probeGpu();
       engine = new Engine(glRef.current!, data, loadSettings());
       engineRef.current = engine;
       stateRef.current.qnhRef = engine.weather.now.pressureMsl;

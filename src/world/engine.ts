@@ -58,10 +58,34 @@ export type EngineHooks = {
 
 const TONE = { agx: 0, aces: 1, neutral: 2 } as const;
 
-/** The WebGPU engine is asked for by the setting, or by ?motore=webgpu in the address for a single visit. */
+let gpuHere: boolean | null = null;
+
+/**
+ * Whether this browser offers WebGPU on a real graphics card: an adapter, not a fallback or software one. Asked once,
+ * before the field opens. Where it says no, "auto" takes the WebGL2 engine itself rather than the WebGPU engine drawing
+ * through WebGL2, a path less tried.
+ */
+export async function probeGpu() {
+  if (gpuHere != null) return gpuHere;
+  try {
+    const gpu = (navigator as unknown as { gpu?: { requestAdapter(o: object): Promise<{ info?: Record<string, unknown> } | null> } }).gpu;
+    const adapter = gpu ? await gpu.requestAdapter({ powerPreference: "high-performance" }) : null;
+    const info = adapter?.info ?? {};
+    gpuHere = !!adapter && !info.isFallbackAdapter && !/swiftshader|llvmpipe|software/i.test(`${info.vendor} ${info.architecture} ${info.description}`);
+  } catch {
+    gpuHere = false;
+  }
+  return gpuHere;
+}
+
+/** The answer of probeGpu, or null before it was asked. */
+export const gpuAvailable = () => gpuHere;
+
+/** The engine is asked for by the setting, or by ?motore=webgpu in the address for a single visit; "auto" follows probeGpu. */
 export function wantsGpu(settings: Settings) {
   const asked = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("motore");
   if (asked) return asked.startsWith("webgpu");
+  if (settings.engine === "auto") return gpuHere === true;
   return settings.engine === "webgpu";
 }
 
