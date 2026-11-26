@@ -1,8 +1,13 @@
 import * as THREE from "three";
-import { MeshStandardNodeMaterial } from "three/webgpu";
+import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from "three/webgpu";
 import {
   abs,
   asin,
+  cameraProjectionMatrix,
+  cross,
+  materialRoughness,
+  uniform,
+  varying,
   atan,
   attribute,
   clamp,
@@ -69,6 +74,91 @@ export function projectPhoto(view: GpuView, base: Any, p: Any, n: Any): Any {
   const photo = b.sample("uProjTex", select(pano, uvPano, uvFlat)).rgb;
   const weight = fade.mul(b.value("uProjMix")).mul(select(pano, float(1), inFrame)).mul(step(0.5, b.value("uProjOn")));
   return mix(base, photo, weight);
+}
+
+/**
+ * cloudShade of COMMON_GLSL: the clouds' shadow at a point, read from the same noise as the cloud layer, 2,800 m up along
+ * the sun's direction. 1 in the clear, down to 0.12 under thick cloud.
+ */
+export function cloudShade(view: GpuView, p: Any): Any {
+  const b = view.bridge;
+  const sun = b.value("uSunDir");
+  const cover = b.value("uCloud");
+  const q = p.xz.add(sun.xz.div(sun.y.max(0.12)).mul(2800)).mul(0.000055).add(b.value("uCloudOff"));
+  return mix(float(1), float(0.12), cloudDensity(view, q).mul(smoothstep(0, 0.25, cover))).mul(step(0.02, cover)).add(step(cover, 0.02));
+}
+
+/** How thick the cloud is at a point of the cloud layer's noise field, before the cover's own fade-in. */
+export function cloudDensity(view: GpuView, q: Any): Any {
+  const b = view.bridge;
+  const n = b.sample("uNoise", q).r.mul(0.62).add(b.sample("uNoise", q.mul(2.9)).g.mul(0.38));
+  const edge = float(1).sub(b.value("uCloud").mul(1.02));
+  return smoothstep(edge.sub(0.06), edge.add(0.2), n);
+}
+
+/**
+ * The weather block of shade() in shading.ts: rain darkens and slicks what faces up, puddles gather where the noise is
+ * low, snow settles on what is flat enough; and the clouds' shadows dim the sun on every surface that takes them.
+ */
+export function weatherize(view: GpuView, m: Any) {
+  const b = view.bridge;
+  const n = normalWorld;
+  const xz = positionWorld.xz;
+  const wet = b.value("uWet");
+  const upF = smoothstep(0.45, 0.92, n.y);
+  const wetAmt = wet.mul(mix(float(0.35), float(1), upF));
+  const puddle = smoothstep(0.56, 0.72, b.sample("uNoise", xz.mul(0.017)).g.add(wet.mul(0.22)).sub(0.12)).mul(upF).mul(wet);
+  const snow = b.value("uSnow").mul(smoothstep(0.3, 0.72, n.y.add(b.sample("uNoise", xz.mul(0.19)).b.sub(0.5).mul(0.5))));
+  const color = m.colorNode ?? vec3(1);
+  m.colorNode = mix(color.mul(float(1).sub(wetAmt.mul(0.42))), vec3(0.86, 0.89, 0.94), snow);
+  const rough = m.roughnessNode ?? materialRoughness;
+  m.roughnessNode = mix(mix(rough, float(0.14), max(puddle.mul(0.95), wetAmt.mul(0.4))), float(0.82), snow);
+  m.receivedShadowNode = Fn(([shadow]: Any[]) => shadow.mul(cloudShade(view, positionWorld)));
+  return m;
+}
+
+/**
+ * Precipitation of details.ts: rain streaks or snowflakes in a 36 m box that travels with the camera, the same quads,
+ * placed in view space by the vertex stage. The source's uniforms are read every frame, so Precipitation.update drives both.
+ */
+function precipitation(view: GpuView, source: THREE.Material) {
+  const u = (source as THREE.ShaderMaterial).uniforms;
+  const live = (name: string, init: unknown): Any => uniform(init as Any).onRenderUpdate(() => u[name]!.value);
+  // The camera's own position: the box travels with the eye that draws it.
+  const camPos = cameraPosition;
+  const wind = live("uWindXZ", new THREE.Vector2());
+  const amount = live("uAmount", 0);
+  const snowMix = live("uSnowMix", 0);
+  const light = live("uLight", new THREE.Color(1, 1, 1));
+  const t = view.bridge.value("uTime");
+  const seed = attribute("aSeed", "vec3");
+  const corner = attribute("aCorner", "vec2");
+  const SIZE = 36;
+  const snowy = snowMix.greaterThan(0.5);
+  const drift = mix(float(0.55), float(0.85), snowMix);
+  const vel = vec3(wind.x.mul(drift), mix(float(9.5), float(1.15), snowMix).negate(), wind.y.mul(drift));
+  // Every drop falls at the same speed here. The GLSL original gives each its own (0.8 to 1.2 times): in TSL any per-drop
+  // factor on the time, from the seed or from an attribute, threw the drops out of the box, and the cause was not found.
+  let p: Any = seed.mul(SIZE).add(vel.mul(t));
+  p = p.add(vec3(sin(t.mul(0.9).add(seed.x.mul(30))), 0, cos(t.mul(0.7).add(seed.z.mul(30)))).mul(0.5).mul(step(0.5, snowMix)));
+  // GLSL's mod floors; WGSL's % truncates, which would fold the box the wrong way below zero.
+  const rel = p.sub(camPos);
+  p = rel.sub(floor(rel.div(SIZE)).mul(SIZE)).sub(SIZE / 2);
+  const vv = cameraViewMatrix.mul(vec4(p.add(camPos), 1)).xyz;
+  const dirV = normalize(cameraViewMatrix.mul(vec4(normalize(vel), 0)).xyz);
+  const visible = step(fract(seed.x.mul(91.7).add(seed.z.mul(13.1))), amount);
+  const side = normalize(cross(dirV, normalize(vv)));
+  const rain = vv.add(side.mul(corner.x).mul(vv.length().mul(0.0016).add(0.011))).add(dirV.mul(corner.y).mul(0.42));
+  const flake = vv.add(vec3(corner.mul(0.032), 0));
+  const clip = cameraProjectionMatrix.mul(vec4(select(snowy, flake, rain), 1));
+  const fade = varying(visible.mul(smoothstep(0.3, 1.5, vv.length())).mul(smoothstep(18, 10, p.length())));
+  const m = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
+  m.vertexNode = select(visible.greaterThan(0.5), clip, vec4(2, 2, 2, 1)) as Any;
+  const shape = select(snowy, smoothstep(1, 0.35, corner.length()).mul(0.95), float(1).sub(abs(corner.x)).mul(float(1).sub(corner.y.mul(corner.y))).mul(0.55));
+  m.colorNode = light as Any;
+  m.opacityNode = shape.mul(fade) as Any;
+  m.fog = false;
+  return m;
 }
 
 /** PROV_GLSL: mapped or measured in blue, read from shadows in orange, presumed in green and hatched, so colour never works alone. */
@@ -287,16 +377,17 @@ function flood(view: GpuView) {
 
 export const PORTED: Record<string, Port> = {
   flood,
+  precip: precipitation,
   ground: (view) => view.groundMaterial(),
   roofs: (view, source) => view.roofMaterial(source),
   far: (view, source) => view.standIn(source),
-  walls,
+  walls: (view, source) => weatherize(view, walls(view, source)),
   leaves,
   crowns,
   trunks,
   grass,
   water,
-  "walls-low": lowWalls,
+  "walls-low": (view) => weatherize(view, lowWalls(view)),
   "fence-bars": bars,
   ribbons: (view, source) => view.standIn(source),
   props: (view, source) => view.standIn(source),

@@ -1405,7 +1405,7 @@ export class Engine {
     });
   }
 
-  /** The WebGPU engine's frame: no own sky, clouds or post chain yet (see gpu.ts), the same sun, exposure and world. */
+  /** The WebGPU engine's frame: three's physical sky, its own post chain (see gpu.ts), the same sun, exposure, weather and world. */
   private renderGpu() {
     const gpu = this.gpu!;
     if (!gpu.isReady) return;
@@ -1418,6 +1418,9 @@ export class Engine {
     const skyLevel = 0.03 + Math.max(0, sun.y) * 1.3 + (dirIsMoon ? 0 : 0.14);
     const target = s.autoExposure ? Math.min(6.5, 0.72 / Math.pow(skyLevel * (1 - w.cloud * 0.4), 0.6)) : 1;
     this.exposure += (target - this.exposure) * 0.02;
+    // Rain and snow, and the clouds' sheet over the ground the box stands on.
+    this.precip.update(this.camera, w.rain, w.snow, U.uWindVec.value.clone().multiplyScalar(w.wind), gpu.skyLight.clone().multiplyScalar(0.95));
+    gpu.setCloudBase(this.data.terrain.min);
     gpu.convert(this.scene);
     gpu.render(dirIsMoon ? this.moon : sun, intensity, this.exposure * s.exposure, { ao: s.ao, bloom: s.bloom, visibility: w.visibility, aerial: s.aerial });
     this.lastInfo = gpu.info();

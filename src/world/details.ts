@@ -513,6 +513,8 @@ export class Precipitation {
           gl_FragColor = vec4(uLight, a * vA);
         }`,
     });
+    // The WebGPU engine draws it with its own port (gpuMaterials.ts), fed by these same uniforms.
+    this.material.userData.shadeKey = "precip";
     this.mesh = new THREE.Mesh(stretch, this.material);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 10;

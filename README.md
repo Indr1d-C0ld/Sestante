@@ -84,7 +84,11 @@ Cosa è portato: terreno, tetti e campo lontano leggono la ripresa come nel moto
 
 Anche gli strumenti di ricerca che colorano il mondo funzionano: i colori della provenienza delle altezze, la foto proiettata dal punto in cui è stata scattata e la lastra d'acqua dell'allagamento. Portando la proiezione è emerso un difetto: le texture non ancora arrivate (la foto, la seconda ripresa del viaggio nel tempo, il velo) condividevano un unico segnaposto, e lo shader le fondeva in un solo collegamento, così la foto arrivata dopo non si vedeva. Ora ognuna ha il suo.
 
-Cosa manca: nuvole, pioggia e neve. Differenze ancora visibili: il chiarore verso il sole è più debole, perché il cielo di three.js è meno caldo di quello proprio, e il prato da vicino è più chiaro e meno verde. La scheda del motore elenca cosa è portato e cosa no. L'aspetto è stato tarato a occhio contro il motore WebGL2 sul riquadro di Zurigo.
+Anche il tempo c'è. La pioggia bagna e scurisce ciò che guarda in alto e forma pozzanghere, la neve si posa su ciò che è abbastanza piano, e le ombre delle nuvole attenuano il sole. Strisce di pioggia e fiocchi di neve cadono in una scatola che segue l'occhio, come nel motore WebGL2. Le nuvole sono uno strato a 2.800 m, dipinto su una cupola attorno alla camera e letto dallo stesso campo che dà le loro ombre al suolo, e il cielo si vela e si spegne con la copertura, riflessi nelle pozzanghere compresi.
+
+Le differenze sono dichiarate. Le nuvole sono piatte, non il volume ricostruito passo per passo del motore WebGL2, quindi non hanno spessore né luce che filtra dai bordi; in compenso coincidono con le loro ombre, mentre nel motore WebGL2 forma e ombre vengono da due campi diversi. Le gocce cadono tutte alla stessa velocità: nell'originale ognuna ha la sua, da 0,8 a 1,2 volte, ma in TSL ogni fattore per goccia applicato al tempo spingeva le gocce fuori dalla scatola, e la causa non è stata trovata.
+
+Differenze ancora visibili: il chiarore verso il sole è più debole, perché il cielo di three.js è meno caldo di quello proprio, e il prato da vicino è più chiaro e meno verde. La scheda del motore elenca cosa è portato e cosa no. L'aspetto è stato tarato a occhio contro il motore WebGL2 sul riquadro di Zurigo.
 
 **Prestazioni.** Il motore WebGPU è limitato dal processore, non dalla scheda: three.js spende di più per ogni disegno su WebGPU. Il profilo del processore indicava un terzo del tempo alle ombre a cascata e un quinto al bagliore di three.js, una dozzina di passaggi di sfocatura. Per questo:
 

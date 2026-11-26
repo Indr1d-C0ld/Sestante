@@ -1,11 +1,11 @@
 import * as THREE from "three";
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial, PMREMGenerator, RenderPipeline, WebGPURenderer } from "three/webgpu";
-import { abs, attribute, cameraPosition, cameraViewMatrix, clamp, dot, exp, float, Fn, getViewPosition, int, max, mix, mrt, normalView, normalWorld, output, pass, pmremTexture, positionWorld, screenUV, pow, select, smoothstep, texture, uniform, vec2, vec3, vec4 } from "three/tsl";
+import { abs, attribute, cameraPosition, cameraViewMatrix, clamp, dot, exp, float, Fn, getViewPosition, int, max, mix, mrt, normalView, normalWorld, output, pass, pmremTexture, positionWorld, screenUV, pow, select, smoothstep, step, texture, uniform, vec2, vec3, vec4 } from "three/tsl";
 import { ao } from "three/addons/tsl/display/GTAONode.js";
 import { gaussianBlur } from "three/addons/tsl/display/GaussianBlurNode.js";
 import { CSMShadowNode } from "three/addons/csm/CSMShadowNode.js";
 import { SkyMesh } from "three/addons/objects/SkyMesh.js";
-import { buildingLayers, PORTED, projectPhoto } from "./gpuMaterials.ts";
+import { buildingLayers, cloudDensity, PORTED, projectPhoto, weatherize } from "./gpuMaterials.ts";
 import { GROUND_LAYERS } from "./ground.ts";
 import { U } from "./shading.ts";
 
@@ -100,6 +100,11 @@ export class GpuView {
   private visibility = uniform(30000);
   private aerial = uniform(1);
   private grey = uniform(0);
+  private cloudLight = uniform(new THREE.Color(1, 1, 1));
+  private clouds: THREE.Mesh | null = null;
+  private cloudBase = 0;
+  private cloudTop = uniform(2800);
+  private envCloud = -1;
   private greyLight = uniform(new THREE.Color(0.7, 0.72, 0.76));
   private hazeNode: Any = null;
   sunColor = new THREE.Color(1, 0.96, 0.9);
@@ -139,6 +144,7 @@ export class GpuView {
     (this.sky as Any).rayleigh.value = 1.2;
     (this.sky.material as Any).fog = false;
     scene.add(this.sky);
+    scene.add(this.cloudLayer());
     // The same sky, alone, lights the world as an environment: what the WebGL2 engine draws as its own LUT dome.
     this.envSky = new SkyMesh();
     this.envSky.scale.setScalar(1000);
@@ -277,14 +283,14 @@ export class GpuView {
     if (cached) return cached;
     const key = (material.userData.shadeKey as string | undefined) ?? material.type;
     let out: THREE.Material;
-    if ((material as THREE.ShaderMaterial).isShaderMaterial) {
+    if (PORTED[key]) {
+      out = PORTED[key]!(this, material);
+      this.note(this.report.ported, key);
+    } else if ((material as THREE.ShaderMaterial).isShaderMaterial) {
       // Raw GLSL cannot run here: hidden until ported, and listed.
       object.visible = false;
       this.note(this.report.hidden, key);
       out = material;
-    } else if (PORTED[key]) {
-      out = PORTED[key]!(this, material);
-      this.note(this.report.ported, key);
     } else {
       out = this.standIn(material);
       this.note(this.report.missing, key);
@@ -404,7 +410,7 @@ export class GpuView {
     const ripple = wa.mul(0.22).add(wb.mul(0.1));
     const tilt = select(water, vec3(ripple.x, 0, ripple.y).negate(), bump);
     m.normalNode = normalView.sub(cameraViewMatrix.mul(vec4(tilt, 0)).xyz).normalize() as Any;
-    return m;
+    return weatherize(this, m);
   }
 
   roofMaterial(source: THREE.Material) {
@@ -417,7 +423,7 @@ export class GpuView {
       const n = b.sample("uNoise", positionWorld.xz.mul(0.47)).a;
       return buildingLayers(this, albedo.mul(mix(float(1), n.mul(0.3).add(0.85), float(1).sub(smoothstep(15, 120, d)).mul(b.value("uDetail")))));
     })();
-    return m;
+    return weatherize(this, m);
   }
 
   setShadow(size: number, far: number) {
@@ -430,6 +436,43 @@ export class GpuView {
     this.renderer?.setSize(w, h, false);
   }
 
+  /**
+   * The cloud layer: a sheet 2,800 m above the ground, drawn from the same noise as the clouds' shadows on the ground
+   * (cloudShade), so every cloud overhead casts the shadow you see. Painted on a dome around the camera, inside its far
+   * plane: each direction is followed up to the sheet, where the cloud is read. Flat, not the WebGL2 engine's ray-marched
+   * volume: no thickness, no light through the edges.
+   */
+  private cloudLayer() {
+    const b = this.bridge;
+    const m = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, side: THREE.BackSide });
+    const dir = positionWorld.sub(cameraPosition).normalize();
+    const above = this.cloudTop.sub(cameraPosition.y).max(50);
+    const reach = above.div(dir.y.max(0.01));
+    const hit = cameraPosition.xz.add(dir.xz.mul(reach));
+    const q = hit.mul(0.000055).add(b.value("uCloudOff"));
+    const cover = b.value("uCloud");
+    const density = cloudDensity(this, q).mul(smoothstep(0, 0.25, cover));
+    // Thinner towards the horizon, where the sheet is far away, and nothing below it.
+    const far = float(1).sub(smoothstep(18000, 45000, reach)).mul(smoothstep(0.005, 0.04, dir.y));
+    m.colorNode = mix(vec3(1, 0.985, 0.96), vec3(0.6, 0.63, 0.68), density.mul(0.8)).mul(this.cloudLight) as Any;
+    m.opacityNode = density.mul(0.95).mul(far).mul(step(0.015, cover)) as Any;
+    (m as Any).fog = false;
+    this.clouds = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), m);
+    this.clouds.frustumCulled = false;
+    this.clouds.renderOrder = 5;
+    return this.clouds;
+  }
+
+  /** The sky's light on things that are not lit by the sun: rain streaks, snowflakes. */
+  get skyLight() {
+    return this.greyLight.value as THREE.Color;
+  }
+
+  /** Where the clouds' sheet sits: 2,800 m above this height, as cloudShade assumes. */
+  setCloudBase(y: number) {
+    this.cloudBase = y;
+  }
+
   /** Sun, sky, haze and exposure for one frame, then the scene through the pipeline. */
   render(sun: THREE.Vector3, intensity: number, exposure: number, look: { ao: number; bloom: number; visibility: number; aerial: number } = { ao: 0.8, bloom: 0.45, visibility: 30000, aerial: 1 }) {
     this.bridge.sync();
@@ -439,6 +482,11 @@ export class GpuView {
     this.sunColor.setRGB(1, 0.72 + 0.26 * Math.min(1, up * 3), 0.5 + 0.45 * Math.min(1, up * 2.5));
     this.sunLight.color.copy(this.sunColor);
     this.sunLight.intensity = intensity;
+    // Lit from above by the sun and from all round by the sky; under the AgX tone mapping as everything else.
+    this.cloudLight.value.copy(this.sunColor).multiplyScalar(0.35 + 0.6 * Math.min(1, up * 3)).lerp(this.greyLight.value, 0.3);
+    this.clouds?.position.copy(this.camera.position);
+    this.clouds?.scale.setScalar(this.camera.far * 0.9);
+    this.cloudTop.value = this.cloudBase + 2800;
     this.sunLight.position.copy(this.camera.position).addScaledVector(sun, 1500);
     this.sunLight.target.position.copy(this.camera.position);
     this.sunLight.target.updateMatrixWorld();
@@ -446,7 +494,8 @@ export class GpuView {
     if (!renderer) return;
     // Tuned by eye against the WebGL2 engine on the Zurich test box: three's sky and AgX sit brighter than the own chain.
     renderer.toneMappingExposure = exposure * 0.6;
-    this.scene.environmentIntensity = 0.35;
+    // Under thick cloud the sky gives far less light, and puddles reflect a dull grey.
+    this.scene.environmentIntensity = 0.35 * (1 - 0.55 * (U.uCloud.value as number));
     this.visibility.value = look.visibility;
     this.aerial.value = look.aerial;
     this.grey.value = look.visibility < 12000 ? 1 : THREE.MathUtils.smoothstep(25000 - look.visibility, 8000, 24000);
@@ -459,8 +508,16 @@ export class GpuView {
     }
     this.bloomStrength.value = look.bloom * 0.5;
     this.staggerCascades();
-    // The environment follows the sun, re-baked when it has moved half a degree.
-    if (this.pmrem && this.envSky && this.envSun.angleTo(sun) > 0.009) {
+    // Cloud whitens and dims the sky, and the sky as an environment too: an overcast day does not reflect blue in the puddles.
+    const cloud = U.uCloud.value as number;
+    for (const sky of [this.sky, this.envSky]) {
+      if (!sky) continue;
+      (sky as Any).turbidity.value = 2.5 + 7.5 * cloud;
+      (sky as Any).rayleigh.value = 1.2 * (1 - 0.65 * cloud);
+    }
+    // The environment follows the sun, re-baked when it has moved half a degree or the cloud cover has changed.
+    if (this.pmrem && this.envSky && (this.envSun.angleTo(sun) > 0.009 || Math.abs(cloud - this.envCloud) > 0.05)) {
+      this.envCloud = cloud;
       this.envSun.copy(sun);
       (this.envSky as Any).sunPosition.value.copy(sun);
       this.envTarget?.dispose();
