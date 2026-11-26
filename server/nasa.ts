@@ -118,7 +118,11 @@ export type GediStatus = {
 };
 
 const HARMONY = "https://harmony.earthdata.nasa.gov";
-const running = new Map<string, GediStatus>();
+
+/** A product Harmony cuts down to the box: GEDI's footprints, ICESat-2's ground segments. */
+type Product<T> = { prefix: string; shortName: string; noun: string; read: (file: string, name: string, box: Box) => Promise<T[]>; sort: (a: T, b: T) => number };
+type HarmonyStatus<T> = { state: "assente" | "in corso" | "pronto" | "fallito"; progress: number; message: string; granules: number; shots: T[]; at: string | null };
+const running = new Map<string, HarmonyStatus<unknown>>();
 
 /** "GEDI02_A_2019209152911_…": year and day of year. */
 export function granuleDate(name: string) {
@@ -127,13 +131,13 @@ export function granuleDate(name: string) {
   return new Date(Date.UTC(Number(match[1]), 0, Number(match[2]))).toISOString().slice(0, 10);
 }
 
-async function gediCollection() {
-  const res = await fetch("https://cmr.earthdata.nasa.gov/search/collections.umm_json?short_name=GEDI02_A&page_size=20", { signal: AbortSignal.timeout(30_000) });
+async function newestCollection(shortName: string) {
+  const res = await fetch(`https://cmr.earthdata.nasa.gov/search/collections.umm_json?short_name=${shortName}&page_size=20`, { signal: AbortSignal.timeout(30_000) });
   if (!res.ok) throw new Error(`Catalogo NASA: ${res.status}`);
   const items = ((await res.json()) as { items?: { meta: { "concept-id": string }; umm: { Version: string } }[] }).items ?? [];
   // Several versions stay listed side by side: the newest has the best geolocation.
   const newest = items.sort((a, b) => Number(b.umm.Version) - Number(a.umm.Version))[0];
-  if (!newest) throw new Error("GEDI non è nel catalogo NASA.");
+  if (!newest) throw new Error(`${shortName} non è nel catalogo NASA.`);
   return newest.meta["concept-id"];
 }
 
@@ -194,9 +198,9 @@ type H5Group = { keys(): string[]; get(path: string): unknown };
 
 type HarmonyJob = { jobID: string; status: string; progress: number; links?: { rel: string; href: string }[]; errors?: { message?: string }[] };
 
-async function followJob(jobID: string, box: Box, key: string, status: GediStatus) {
+async function followJob<T>(product: Product<T>, jobID: string, box: Box, key: string, status: HarmonyStatus<T>) {
   const headers = earthdataHeaders();
-  const done = join(CACHE, `gedi_${key}.json`);
+  const done = join(CACHE, `${product.prefix}_${key}.json`);
   let job: HarmonyJob;
   for (;;) {
     const res = await fetch(`${HARMONY}/jobs/${jobID}?limit=2000`, { headers, signal: AbortSignal.timeout(60_000) });
@@ -213,60 +217,60 @@ async function followJob(jobID: string, box: Box, key: string, status: GediStatu
   for (let i = 0; i < links.length; i++) {
     status.message = `Leggo le orbite: ${i + 1}/${links.length}`;
     status.progress = 85 + Math.round((i / links.length) * 15);
-    const name = links[i]!.href.split("/").pop() ?? "gedi.h5";
+    const name = links[i]!.href.split("/").pop() ?? `${product.prefix}.h5`;
     const res = await fetch(links[i]!.href, { headers, redirect: "follow", signal: AbortSignal.timeout(180_000) });
     if (!res.ok) continue;
-    const temp = join(CACHE, `tmp_${key}_${i}.h5`);
+    const temp = join(CACHE, `tmp_${product.prefix}_${key}_${i}.h5`);
     writeFileSync(temp, Buffer.from(await res.arrayBuffer()));
     try {
-      status.shots.push(...(await readSubset(temp, name, box)));
+      status.shots.push(...(await product.read(temp, name, box)));
     } finally {
       rmSync(temp, { force: true });
     }
   }
-  status.shots.sort((a, b) => b.date.localeCompare(a.date));
+  status.shots.sort(product.sort);
   status.state = "pronto";
   status.progress = 100;
   status.at = new Date().toISOString();
-  status.message = `${status.shots.length} impronte da ${links.length} orbite.`;
+  status.message = `${status.shots.length} ${product.noun} da ${links.length} orbite.`;
   writeFileSync(done, JSON.stringify(status));
-  rmSync(join(CACHE, `gedi_${key}.job`), { force: true });
+  rmSync(join(CACHE, `${product.prefix}_${key}.job`), { force: true });
 }
 
-function watch(jobID: string, box: Box, key: string, status: GediStatus) {
-  followJob(jobID, box, key, status).catch((error: Error) => {
+function watch<T>(product: Product<T>, jobID: string, box: Box, key: string, status: HarmonyStatus<T>) {
+  followJob(product, jobID, box, key, status).catch((error: Error) => {
     status.state = "fallito";
     status.message = scrub(error.message);
-    rmSync(join(CACHE, `gedi_${key}.job`), { force: true });
+    rmSync(join(CACHE, `${product.prefix}_${key}.job`), { force: true });
   });
 }
 
 /** Where this box stands. A job already sent to NASA is picked up again after a restart, not paid for twice. */
-export function gediStatus(box: Box): GediStatus {
+function harmonyStatus<T>(product: Product<T>, box: Box): HarmonyStatus<T> {
   const key = hash(box);
-  const live = running.get(key);
+  const live = running.get(`${product.prefix}:${key}`) as HarmonyStatus<T> | undefined;
   if (live) return live;
-  const done = join(CACHE, `gedi_${key}.json`);
-  if (existsSync(done)) return JSON.parse(readFileSync(done, "utf8")) as GediStatus;
-  const pending = join(CACHE, `gedi_${key}.job`);
+  const done = join(CACHE, `${product.prefix}_${key}.json`);
+  if (existsSync(done)) return JSON.parse(readFileSync(done, "utf8")) as HarmonyStatus<T>;
+  const pending = join(CACHE, `${product.prefix}_${key}.job`);
   if (existsSync(pending)) {
-    const status: GediStatus = { state: "in corso", progress: 0, message: "Riprendo il lavoro già inviato a NASA", granules: 0, shots: [], at: null };
-    running.set(key, status);
-    watch(readFileSync(pending, "utf8").trim(), box, key, status);
+    const status: HarmonyStatus<T> = { state: "in corso", progress: 0, message: "Riprendo il lavoro già inviato a NASA", granules: 0, shots: [], at: null };
+    running.set(`${product.prefix}:${key}`, status);
+    watch(product, readFileSync(pending, "utf8").trim(), box, key, status);
     return status;
   }
   return { state: "assente", progress: 0, message: "", granules: 0, shots: [], at: null };
 }
 
-export async function startGedi(box: Box): Promise<GediStatus> {
-  const current = gediStatus(box);
+async function startHarmony<T>(product: Product<T>, box: Box): Promise<HarmonyStatus<T>> {
+  const current = harmonyStatus(product, box);
   if (current.state === "in corso") return current;
   const key = hash(box);
   const headers = earthdataHeaders();
-  const status: GediStatus = { state: "in corso", progress: 0, message: "Invio la richiesta a NASA", granules: 0, shots: [], at: null };
-  running.set(key, status);
+  const status: HarmonyStatus<T> = { state: "in corso", progress: 0, message: "Invio la richiesta a NASA", granules: 0, shots: [], at: null };
+  running.set(`${product.prefix}:${key}`, status);
   try {
-    const collection = await gediCollection();
+    const collection = await newestCollection(product.shortName);
     const query = new URLSearchParams({ maxResults: "100", forceAsync: "true", skipPreview: "true", variable: "all" });
     query.append("subset", `lat(${box.s}:${box.n})`);
     query.append("subset", `lon(${box.w}:${box.e})`);
@@ -274,8 +278,8 @@ export async function startGedi(box: Box): Promise<GediStatus> {
     const text = await res.text();
     if (!res.ok) throw new Error(`Harmony risponde ${res.status}: ${scrub(text).slice(0, 200)}`);
     const job = JSON.parse(text) as HarmonyJob;
-    writeFileSync(join(CACHE, `gedi_${key}.job`), job.jobID);
-    watch(job.jobID, box, key, status);
+    writeFileSync(join(CACHE, `${product.prefix}_${key}.job`), job.jobID);
+    watch(product, job.jobID, box, key, status);
   } catch (error) {
     status.state = "fallito";
     status.message = scrub((error as Error).message);
@@ -283,8 +287,65 @@ export async function startGedi(box: Box): Promise<GediStatus> {
   return status;
 }
 
-export function forgetGedi(box: Box) {
+function forgetHarmony<T>(product: Product<T>, box: Box) {
   const key = hash(box);
-  running.delete(key);
-  rmSync(join(CACHE, `gedi_${key}.json`), { force: true });
+  running.delete(`${product.prefix}:${key}`);
+  rmSync(join(CACHE, `${product.prefix}_${key}.json`), { force: true });
 }
+
+const GEDI: Product<LaserShot> = { prefix: "gedi", shortName: "GEDI02_A", noun: "impronte", read: readSubset, sort: (a, b) => b.date.localeCompare(a.date) };
+export const gediStatus = (box: Box) => harmonyStatus(GEDI, box) as GediStatus;
+export const startGedi = (box: Box) => startHarmony(GEDI, box) as Promise<GediStatus>;
+export const forgetGedi = (box: Box) => forgetHarmony(GEDI, box);
+
+// --- ICESat-2 ATL08: the ground under every 100 m of track, all over the globe ---
+
+/** One ATL08 land segment: the terrain's best-fit height on the WGS84 ellipsoid, and how sure it is. */
+export type GroundSegment = { lat: number; lon: number; h: number; sigma: number; photons: number; date: string; beam: string; good: boolean };
+export type IcesatStatus = HarmonyStatus<GroundSegment>;
+
+/** "ATL08_20190101123456_…": the date. */
+export function atl08Date(name: string) {
+  const match = /ATL08_(\d{4})(\d{2})(\d{2})/.exec(name);
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : "";
+}
+
+/** Which ATL08 segments to trust: checked against six airborne surveys, the stricter rules only threw data away. */
+export const icesatGood = (photons: number, sigma: number) => photons >= 10 && sigma < 5;
+
+async function readAtl08(file: string, name: string, box: Box) {
+  const { default: h5wasm } = (await import("h5wasm/node")) as unknown as { default: { ready: Promise<unknown>; File: new (path: string, mode: string) => H5Group & { close(): void } } };
+  await h5wasm.ready;
+  const h5 = new h5wasm.File(file, "r");
+  const date = atl08Date(name);
+  const out: GroundSegment[] = [];
+  try {
+    for (const beam of h5.keys().filter((key) => /^gt[123][lr]$/.test(key))) {
+      const values = (key: string) => (h5.get(`${beam}/land_segments/${key}`) as H5Dataset | null)?.value as ArrayLike<number> | undefined;
+      const lat = values("latitude");
+      const lon = values("longitude");
+      const h = values("terrain/h_te_best_fit");
+      if (!lat || !lon || !h) continue;
+      const sigma = values("terrain/h_te_uncertainty");
+      const photons = values("terrain/n_te_photons");
+      for (let i = 0; i < lat.length; i++) {
+        if (lat[i]! < box.s || lat[i]! > box.n || lon[i]! < box.w || lon[i]! > box.e) continue;
+        const v = h[i]!;
+        if (!Number.isFinite(v) || Math.abs(v) > 1e4) continue;
+        const s = sigma && Number.isFinite(sigma[i]) && sigma[i]! < 1e4 ? sigma[i]! : 99;
+        const n = photons ? photons[i]! : 0;
+        // Enough ground photons to fit a surface, and a fit within 5 m. The cloud flag is left out: in Rotterdam it threw away
+        // every segment, while the segments themselves sat within 0.1 m of the airborne survey's ground.
+        out.push({ lat: lat[i]!, lon: lon[i]!, h: v, sigma: s, photons: n, date, beam, good: icesatGood(n, s) });
+      }
+    }
+  } finally {
+    h5.close();
+  }
+  return out;
+}
+
+const ICESAT: Product<GroundSegment> = { prefix: "atl08", shortName: "ATL08", noun: "tratti di suolo", read: readAtl08, sort: (a, b) => b.date.localeCompare(a.date) };
+export const icesatStatus = (box: Box) => harmonyStatus(ICESAT, box);
+export const startIcesat = (box: Box) => startHarmony(ICESAT, box);
+export const forgetIcesat = (box: Box) => forgetHarmony(ICESAT, box);

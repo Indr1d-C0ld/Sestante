@@ -28,6 +28,10 @@ export type DeepLayer = { id: string; label: string; note: string; ext: string; 
 export type NasaEntry = { id: string; label: string; note: string; count: number | null; newest: string | null };
 export type PlacePhoto = { id: string; source: "panoramax" | "commons"; title: string; lat: number; lon: number; date: string | null; heading: number | null; fov: number | null; pano: boolean; thumb: string; full: string; author: string; license: string; link: string };
 export type PlaceArticle = { id: string; title: string; lat: number; lon: number; text: string; link: string; lang: string };
+/** ICESat-2 ATL08 land segments over the box: terrain height on the WGS84 ellipsoid every 100 m of track. */
+export type GroundSegment = { lat: number; lon: number; h: number; sigma: number; photons: number; date: string; beam: string; good: boolean };
+export type IcesatStatus = { state: "assente" | "in corso" | "pronto" | "fallito"; progress: number; message: string; granules: number; shots: GroundSegment[]; at: string | null; geoid?: number | null };
+
 export type GediStatus = { state: "assente" | "in corso" | "pronto" | "fallito"; progress: number; message: string; granules: number; shots: LaserShot[]; at: string | null; geoid?: number | null };
 export type ServiceState = { id: string; label: string; state: "pronta" | "assente" | "scaduta"; detail: string };
 
@@ -78,6 +82,8 @@ export const api = {
   },
   gedi: (b: Bbox) => getJson<GediStatus>(`/api/earth/gedi?${boxQuery(b)}`),
   startGedi: (b: Bbox) => post<GediStatus>(`/api/earth/gedi?${boxQuery(b)}`, {}),
+  icesat: (b: Bbox) => getJson<IcesatStatus>(`/api/earth/icesat?${boxQuery(b)}`),
+  startIcesat: (b: Bbox) => post<IcesatStatus>(`/api/earth/icesat?${boxQuery(b)}`, {}),
 
   sources: () => getJson<TileSourceInfo[]>("/api/sources"),
   sourcesProblem: () => getJson<{ problem: string | null }>("/api/sources/problem"),

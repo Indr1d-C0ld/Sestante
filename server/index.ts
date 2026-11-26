@@ -8,7 +8,7 @@ import { cancelJob, countTiles, getTile, listJobs, startJob, type JobRequest } f
 import { fetchBundle } from "./osm.ts";
 import { allSources, customSources, customSourcesProblem, DATA, resolveSource, ROOT, saveCustomSources, UA, waybackReleases, type TileSource } from "./sources.ts";
 import { copernicusDem, deepLayers, fires, gibsTile, isKnownImage, nasaCatalog, ndviSeries, openWeather, owmTile, placeArticles, placePhotos, PRODUCTS, proxiedImage, sentinelImage, sentinelScenes, sentinelSpectrum, servicesStatus } from "./earth.ts";
-import { forgetGedi, gediStatus, nasademGrid, startGedi } from "./nasa.ts";
+import { forgetGedi, forgetIcesat, gediStatus, icesatStatus, nasademGrid, startGedi, startIcesat } from "./nasa.ts";
 import { geoidAt } from "./geoid.ts";
 import { scrub } from "./secrets.ts";
 
@@ -367,6 +367,14 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
     res.writeHead(200, { "Content-Type": found.ext === "png" ? "image/png" : "image/jpeg", "Cache-Control": "public, max-age=2592000" });
     res.end(found.body);
     return true;
+  }
+  if (path === "/api/earth/icesat" && req.method === "POST") return json(res, 200, await startIcesat(earthBox())), true;
+  if (path === "/api/earth/icesat" && req.method === "DELETE") return forgetIcesat(earthBox()), json(res, 200, { ok: true }), true;
+  if (path === "/api/earth/icesat") {
+    const box = earthBox();
+    const status = icesatStatus(box);
+    const geoid = status.state === "pronto" ? await geoidAt((box.s + box.n) / 2, (box.w + box.e) / 2) : null;
+    return json(res, 200, { ...status, geoid }), true;
   }
   if (path === "/api/earth/gedi" && req.method === "POST") return json(res, 200, await startGedi(earthBox())), true;
   if (path === "/api/earth/gedi" && req.method === "DELETE") return forgetGedi(earthBox()), json(res, 200, { ok: true }), true;

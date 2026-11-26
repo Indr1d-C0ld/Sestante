@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, canvasBlob, type GediStatus, type NasaEntry, type ServiceState } from "../core/api.ts";
+import { api, canvasBlob, type GediStatus, type IcesatStatus, type NasaEntry, type ServiceState } from "../core/api.ts";
 import { alignments, astroEvents, horizonAltitude, planAxis } from "../core/archaeo.ts";
 import { formatLatLon, type Projection } from "../core/geo.ts";
 import { floodStats, sectionAlong, viewshed, type Section } from "../core/fieldwork.ts";
@@ -12,7 +12,7 @@ import { CHART_COLORS, chartPicture, LineChart } from "./Charts.tsx";
 import { dxf, geoJson, notesCsv, saveFile } from "./exports.ts";
 import type { Building, interpretPlate } from "./load.ts";
 import type { Drape } from "./LayersPanel.tsx";
-import { absentIds, applyLaser, applyStrata, assessWorld, correctTrees, cubature, demChangeCanvas, heightErrorsFrom, intervalCoverage, plateDate, treePairs, volumeOfBuilding, readStrata, runBench, shadowPlateOf, viewshedCanvas, type BenchResult } from "./research.ts";
+import { absentIds, applyLaser, applyStrata, assessIcesat, assessWorld, correctTrees, cubature, demChangeCanvas, heightErrorsFrom, intervalCoverage, plateDate, treePairs, volumeOfBuilding, readStrata, runBench, shadowPlateOf, viewshedCanvas, type BenchResult } from "./research.ts";
 import { formatRange, formatVolume, solidVolume } from "../vision/volume.ts";
 import { AncientRoutes, Dossier, Inquiry, LidarTab, Studies } from "./LabExtra.tsx";
 import { PhotoFind } from "./PhotoFind.tsx";
@@ -111,7 +111,12 @@ export function LabPanel(props: LabProps) {
       </div>
       <div className="panel-body stack">
         {tab === "riprese" && <Strata {...props} />}
-        {tab === "laser" && <Laser {...props} />}
+        {tab === "laser" && (
+          <>
+            <Laser {...props} />
+            <IcesatGround {...props} />
+          </>
+        )}
         {tab === "rilievo" && <Relief {...props} />}
         {tab === "volumi" && <Volumes {...props} />}
         {tab === "ipotesi" && <Hypotheses {...props} />}
@@ -382,11 +387,12 @@ function TreeSection({ engine, expedition, laser, onTreeModel, addNote, toast }:
 }
 
 /**
- * The terrain's height against GEDI's ground. Only a shift of the whole box: the shape under the blocks was within a metre
+ * The terrain's height against a laser's ground, GEDI's or ICESat-2's. Only a shift of the whole box: the shape under the blocks was within a metre
  * or two of the laser surveys, the level was not. Applied at the next load, so that everything stands on the new ground.
  */
-function TerrainLift(props: { lift: NonNullable<LaserAssessment["terrainLift"]>; applied: TerrainShift | null; survey: boolean; onShift: (shift: TerrainShift | null) => void; addNote: AddNote }) {
-  const { lift, applied, survey, onShift, addNote } = props;
+function TerrainLift(props: { lift: NonNullable<LaserAssessment["terrainLift"]>; source: "GEDI" | "ICESat-2"; applied: TerrainShift | null; survey: boolean; onShift: (shift: TerrainShift | null) => void; addNote: AddNote }) {
+  const { lift, source, applied, survey, onShift, addNote } = props;
+  const where = source === "GEDI" ? `in ${lift.shots} impronte` : `in ${lift.shots} tratti di traccia`;
   const clear = lift.shots >= 8 && Math.abs(lift.metres) > Math.max(1, lift.spread);
   const total = (applied?.metres ?? 0) + lift.metres;
   return (
@@ -394,13 +400,13 @@ function TerrainLift(props: { lift: NonNullable<LaserAssessment["terrainLift"]>;
       <p className="small">
         {survey
           ? "Il terreno viene dal rilievo laser: la sua quota non va corretta."
-          : `Sul geoide, il suolo visto dal laser in ${lift.shots} impronte sta ${Math.abs(lift.metres).toFixed(1)} m ${lift.metres > 0 ? "sotto" : "sopra"} il terreno del mondo (dispersione ${lift.spread.toFixed(1)} m).`}
-        {applied ? ` Le quote sono già state corrette di ${applied.metres.toFixed(1)} m.` : ""}
+          : `Sul geoide, il suolo visto da ${source} ${where} sta ${Math.abs(lift.metres).toFixed(1)} m ${lift.metres > 0 ? "sotto" : "sopra"} il terreno del mondo (dispersione ${lift.spread.toFixed(1)} m).`}
+        {applied ? ` Le quote sono già state corrette di ${applied.metres.toFixed(1)} m, col suolo di ${applied.source ?? "GEDI"}.` : ""}
         {!survey && !clear ? " Lo scarto è nel rumore della misura: le quote restano come sono." : ""}
       </p>
       {!survey && (
         <p className="hint">
-          I modelli del terreno, nelle città, stanno sopra la strada: misurati contro i rilievi laser, da 0 m a Londra a 12 m a Lione, come uno spostamento di tutto il riquadro e non come gobbe sotto gli isolati. La scena non cambia aspetto; cambiano le quote che leggi (altimetro, sezioni, picchetti, allagamento). Su sette riquadri la stima ha sbagliato di meno di un metro in sei e di 4 m a Parigi, dove le impronte erano 9.
+          I modelli del terreno, nelle città, stanno sopra la strada: misurati contro i rilievi laser, da 0 m a Londra a 12 m a Lione, come uno spostamento di tutto il riquadro e non come gobbe sotto gli isolati. La scena non cambia aspetto; cambiano le quote che leggi (altimetro, sezioni, picchetti, allagamento). Contro i rilievi aerei la stima è stata entro circa 1 m: con GEDI in sette riquadri, con ICESat-2 in sei, fra cui Amsterdam, Rotterdam e Manchester, oltre la portata di GEDI.
         </p>
       )}
       {!survey && (
@@ -409,8 +415,8 @@ function TerrainLift(props: { lift: NonNullable<LaserAssessment["terrainLift"]>;
             <button
               className="btn tiny"
               onClick={() => {
-                addNote("sistema", `Quote del terreno corrette di ${total.toFixed(1)} m`, `Il suolo visto dal laser GEDI, su ${lift.shots} impronte riportate al geoide EGM96, sta ${lift.metres > 0 ? "più in basso" : "più in alto"} del modello del terreno. Il mondo si ricarica sulle quote nuove.`, { instrument: "GEDI" });
-                onShift({ metres: total, shots: lift.shots, at: new Date().toISOString() });
+                addNote("sistema", `Quote del terreno corrette di ${total.toFixed(1)} m`, `Il suolo visto da ${source} ${where}, riportato al geoide EGM96, sta ${lift.metres > 0 ? "più in basso" : "più in alto"} del modello del terreno. Il mondo si ricarica sulle quote nuove.`, { instrument: source });
+                onShift({ metres: total, shots: lift.shots, at: new Date().toISOString(), source });
               }}
             >
               Correggi le quote del terreno e ricarica
@@ -422,6 +428,58 @@ function TerrainLift(props: { lift: NonNullable<LaserAssessment["terrainLift"]>;
             </button>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * ICESat-2's ground over the box: the ATL08 product gives the terrain's height every 100 m of track, all over the globe,
+ * where GEDI does not reach (north of 51.6 degrees). Used only for the terrain's level.
+ */
+function IcesatGround(props: LabProps) {
+  const { engine, expedition, onTerrainShift, addNote } = props;
+  const box = expedition.spec.bbox;
+  const [status, setStatus] = useState<IcesatStatus | null>(null);
+  useEffect(() => {
+    let live = true;
+    let timer = 0;
+    const poll = async () => {
+      const row = await api.icesat(box).catch(() => null);
+      if (!live || !row) return;
+      setStatus(row);
+      if (row.state === "in corso") timer = window.setTimeout(() => void poll(), 4000);
+    };
+    void poll();
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [status?.state === "in corso"]);
+  const result = status?.state === "pronto" ? assessIcesat(engine, status.shots, status.geoid) : null;
+  return (
+    <div>
+      <div className="section-title">Il suolo di ICESat-2</div>
+      <p className="hint">ICESat-2 è un altro laser della NASA, su un satellite in orbita polare: copre tutto il globo, anche oltre i 51,6° di latitudine dove GEDI non arriva. Il suo prodotto ATL08 dà la quota del suolo ogni 100 m lungo la traccia. Qui serve a controllare il livello del terreno del mondo.</p>
+      {(!status || status.state === "assente" || status.state === "fallito") && (
+        <button className="btn" onClick={() => void api.startIcesat(box).then(setStatus)}>
+          Chiedi il suolo di ICESat-2 a NASA
+        </button>
+      )}
+      {status?.state === "fallito" && <p className="small warn">{status.message}</p>}
+      {status?.state === "in corso" && (
+        <div>
+          <progress max={100} value={status.progress} style={{ width: "100%" }} />
+          <p className="mono small">{status.message}</p>
+        </div>
+      )}
+      {result && (
+        <>
+          <p className="small">
+            {result.segments} tratti di traccia da {status!.granules} orbite, di cui {result.good} con abbastanza fotoni sul suolo{result.dates.length ? `, dal ${result.dates[0]} al ${result.dates[result.dates.length - 1]}` : ""}.
+          </p>
+          {result.lift ? <TerrainLift lift={result.lift} source="ICESat-2" applied={expedition.terrainShift ?? null} survey={loadSettings().demSource === "lidar"} onShift={onTerrainShift} addNote={addNote} /> : <p className="hint">Troppo pochi tratti buoni dentro il riquadro per dire il livello del terreno: ne servono almeno 8.</p>}
+        </>
       )}
     </div>
   );
@@ -512,7 +570,7 @@ function Laser(props: LabProps) {
               {a.scale.applied ? "Usando il laser, tutte le altezze stimate del riquadro vengono corrette di conseguenza, fonte per fonte; quelle scritte sulla mappa restano." : "Lo scarto è entro il 5%, il rumore della misura: le altezze stimate restano come sono."}
             </p>
           )}
-          {a.terrainLift && <TerrainLift lift={a.terrainLift} applied={expedition.terrainShift ?? null} survey={loadSettings().demSource === "lidar"} onShift={onTerrainShift} addNote={addNote} />}
+          {a.terrainLift && <TerrainLift lift={a.terrainLift} source="GEDI" applied={expedition.terrainShift ?? null} survey={loadSettings().demSource === "lidar"} onShift={onTerrainShift} addNote={addNote} />}
           <dl className="kv">
             <dt>Riferimento locale</dt>
             <dd>

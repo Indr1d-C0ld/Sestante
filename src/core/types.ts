@@ -199,7 +199,8 @@ export type PlateLean = { x: number; z: number; source: "LiDAR" | "a mano"; deta
 export const plateKey = (ref: PlateRef) =>
   ref.kind === "wayback" ? `wayback:${ref.release}` : ref.kind === "tiles" ? `tiles:${ref.source}:${ref.date ?? ""}` : `upload:${ref.url}`;
 
-export type TerrainShift = { metres: number; shots: number; at: string };
+/** `source` is the laser whose ground set it; older saves without it came from GEDI. */
+export type TerrainShift = { metres: number; shots: number; at: string; source?: "GEDI" | "ICESat-2" };
 
 export type Expedition = {
   spec: FieldSpec;

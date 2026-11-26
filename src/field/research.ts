@@ -1,4 +1,4 @@
-import { stitchPlate } from "../core/api.ts";
+import { stitchPlate, type GroundSegment } from "../core/api.ts";
 import { bestZoom, type Bbox, type Projection } from "../core/geo.ts";
 import type { Affine, Viewshed } from "../core/fieldwork.ts";
 import { api } from "../core/api.ts";
@@ -8,7 +8,7 @@ import { changeVolume, complexRange, formatVolume, INTERVAL_FACTOR, massVolume, 
 import type { AnalysisResult } from "../vision/analyze.ts";
 import { bestHeight, predictShadow, scoreShadow, verdict, type ShadowPlate, type ShadowScore } from "../vision/shadowTest.ts";
 import { absentOn, buildingPresence, combineHeights, type StratumRead } from "../vision/timeline.ts";
-import { assessLaser, correctedHeight, FIXED_SOURCES, FOOTPRINT_RADIUS, type LaserAssessment, type LaserShot, type PlacedShot, type TreeModel, type TreePair } from "../vision/laser.ts";
+import { assessLaser, groundLift, correctedHeight, FIXED_SOURCES, FOOTPRINT_RADIUS, type LaserAssessment, type LaserShot, type PlacedShot, type TreeModel, type TreePair } from "../vision/laser.ts";
 import type { Engine } from "../world/engine.ts";
 import { interpretPlate, readPlate, type Building, type TreeInstance } from "./load.ts";
 
@@ -96,6 +96,22 @@ export function assessWorld(engine: Engine, shots: LaserShot[], geoid?: number |
     trees: engine.plate.trees,
     geoid,
   });
+}
+
+/**
+ * ICESat-2's ground against the world's terrain: every good ATL08 segment, its height brought from the ellipsoid to the
+ * geoid. Segments are 100 m of track, so each is compared with the terrain at its centre.
+ */
+export function assessIcesat(engine: Engine, segments: GroundSegment[], geoid: number | null | undefined) {
+  if (geoid == null || !Number.isFinite(geoid)) return null;
+  const p = engine.data.projection;
+  // The same rule as the server's (server/nasa.ts icesatGood), applied again so that segments saved under an older rule count.
+  const good = segments.filter((s) => s.photons >= 10 && s.sigma < 5);
+  const rows = good.map((s) => {
+    const at = p.toLocal(s.lat, s.lon);
+    return Math.abs(at.x) <= p.halfX && Math.abs(at.z) <= p.halfZ ? engine.heightAt(at.x, at.z) - (s.h - geoid) : Number.NaN;
+  });
+  return { lift: groundLift(rows), segments: segments.length, good: good.length, dates: [...new Set(good.map((s) => s.date))].sort() };
 }
 
 // --- Volumes ---

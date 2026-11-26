@@ -516,7 +516,8 @@ export async function loadField(spec: FieldSpec, onStep: (text: string) => void,
   // A laser survey's bare ground needs no such correction.
   if (terrainShift && demSource !== "lidar" && Number.isFinite(terrainShift.metres)) {
     for (let k = 0; k < raw.length; k++) raw[k]! -= terrainShift.metres;
-    log.push(`Quote del terreno abbassate di ${terrainShift.metres.toFixed(1)} m: il suolo visto dal laser GEDI, su ${terrainShift.shots} impronte riportate al geoide, sta più in basso del modello.`);
+    const seen = terrainShift.source === "ICESat-2" ? `dal laser ICESat-2, su ${terrainShift.shots} tratti di traccia` : `dal laser GEDI, su ${terrainShift.shots} impronte`;
+    log.push(`Quote del terreno abbassate di ${terrainShift.metres.toFixed(1)} m: il suolo visto ${seen} riportati al geoide sta più in basso del modello.`);
   }
 
   onStep("Interrogo OpenStreetMap");

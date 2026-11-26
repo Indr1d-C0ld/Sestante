@@ -56,10 +56,24 @@ export type LaserAssessment = {
   trees: ErrorStats | null;
   perBuilding: Record<string, { measured: number; shots: number; share: number }>;
   /** How far the world's terrain stands above the ground the laser saw, on the geoid; null without the geoid or with few shots. */
-  terrainLift: { metres: number; shots: number; spread: number } | null;
+  terrainLift: TerrainLift | null;
   /** How much taller the laser sees this box's estimated buildings than the world does, if it says so clearly. */
   scale: HeightScale | null;
 };
+
+export type TerrainLift = { metres: number; shots: number; spread: number };
+
+/**
+ * How far the world's terrain stands above a laser's ground, from the differences at each point (terrain minus the laser's
+ * ground brought to the geoid): their median and spread, with at least 8 points. GEDI's lowest modes and ICESat-2's
+ * terrain segments both feed it.
+ */
+export function groundLift(rows: number[]): TerrainLift | null {
+  const usable = rows.filter(Number.isFinite);
+  if (usable.length < 8) return null;
+  const metres = median(usable);
+  return { metres, shots: usable.length, spread: median(usable.map((v) => Math.abs(v - metres))) };
+}
 
 /** Heights that are measured or written: the box-wide correction leaves them alone. */
 export const FIXED_SOURCES = new Set(["OSM height", "LiDAR", "laser GEDI", "ripresa"]);
@@ -164,14 +178,7 @@ export function assessLaser(shots: PlacedShot[], world: { heightAt: (x: number, 
   // How far the world's terrain stands above the ground the laser saw, on the geoid. Terrain models of cities are partly
   // surface models: against airborne surveys they stood 0 to 12 m too high (London 0, Lyon 12), as a shift of the whole box
   // rather than bumps under the blocks. Every good shot off the crowns counts: its lowest mode is the ground.
-  let terrainLift: LaserAssessment["terrainLift"] = null;
-  if (geoid != null) {
-    const rows = footing.filter((row) => row.shot.good && !(row.built < 0.05 && row.crowns.length)).map((row) => world.heightAt(row.shot.x, row.shot.z) - (row.shot.ground - geoid));
-    if (rows.length >= 8) {
-      const metres = median(rows);
-      terrainLift = { metres, shots: rows.length, spread: median(rows.map((v) => Math.abs(v - metres))) };
-    }
-  }
+  const terrainLift = geoid != null ? groundLift(footing.filter((row) => row.shot.good && !(row.built < 0.05 && row.crowns.length)).map((row) => world.heightAt(row.shot.x, row.shot.z) - (row.shot.ground - geoid))) : null;
 
   const readings: ShotReading[] = footing.map(({ shot, best, built, crowns }) => {
     const share = best ? best.count / DISC.length : 0;

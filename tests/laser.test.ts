@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { deflateRawSync } from "node:zlib";
-import { granuleDate, readZipEntry, sampleHgt } from "../server/nasa.ts";
-import { assessLaser, correctedHeight, demDifference, fitTrees, heightScale, type LaserBuilding, type PlacedShot, type TreePair } from "../src/vision/laser.ts";
+import { atl08Date, granuleDate, readZipEntry, sampleHgt } from "../server/nasa.ts";
+import { assessLaser, correctedHeight, demDifference, fitTrees, groundLift, heightScale, type LaserBuilding, type PlacedShot, type TreePair } from "../src/vision/laser.ts";
 
 const shot = (x: number, z: number, ground: number, top: number, extra: Partial<PlacedShot> = {}): PlacedShot => ({ id: `${x}:${z}`, lat: 0, lon: 0, x, z, ground, top, rh98: top - ground, rh50: 0, srtm: null, sensitivity: 0.98, good: true, date: "2023-05-01", beam: "BEAM0000", solar: -10, cover: null, ...extra });
 
@@ -221,4 +221,11 @@ test("col geoide, il suolo del laser dice di quanto il terreno del mondo sta sop
   // Without the geoid there is no level to compare with; with too few shots, no verdict.
   assert.equal(assessLaser(open, { ...world, heightAt: () => 60 }).terrainLift, null);
   assert.equal(assessLaser(open.slice(0, 5), raised).terrainLift, null);
+});
+
+test("il livello del terreno da un laser: mediana e dispersione, con almeno 8 punti; la data di un file ATL08", () => {
+  const lift = groundLift([4.8, 5.1, 5.0, 4.9, 5.3, 5.0, 4.7, 5.2, Number.NaN, 40])!;
+  assert.ok(Math.abs(lift.metres - 5.05) < 0.11 && lift.shots === 9 && lift.spread < 0.3);
+  assert.equal(groundLift([5, 5, 5, 5, 5, 5, 5]), null);
+  assert.equal(atl08Date("ATL08_20210304101112_10641005_006_01_subsetted.h5"), "2021-03-04");
 });
