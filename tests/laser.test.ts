@@ -209,3 +209,16 @@ test("la taratura del riquadro corregge le altezze stimate solo se il laser lo d
   assert.equal(heightScale(discs(1.5, 30, "OSM height")), null);
   assert.equal(heightScale(discs(1.5, 4)), null);
 });
+
+test("col geoide, il suolo del laser dice di quanto il terreno del mondo sta sopra quello vero", () => {
+  // The world's terrain at 60 m, the laser's ground at 50 m on the geoid: the terrain stands 10 m too high.
+  const raised = { ...world, heightAt: () => 60, geoid: GEOID };
+  const open = Array.from({ length: 10 }, (_, i) => shot(200 + i * 30, 0, 50 + GEOID + (i % 3) * 0.2, 50 + GEOID + (i % 3) * 0.2));
+  const a = assessLaser(open, raised);
+  assert.equal(a.datum, GEOID);
+  assert.match(a.datumFrom, /geoide/);
+  assert.ok(a.terrainLift && Math.abs(a.terrainLift.metres - 10) < 0.3 && a.terrainLift.shots === 10);
+  // Without the geoid there is no level to compare with; with too few shots, no verdict.
+  assert.equal(assessLaser(open, { ...world, heightAt: () => 60 }).terrainLift, null);
+  assert.equal(assessLaser(open.slice(0, 5), raised).terrainLift, null);
+});

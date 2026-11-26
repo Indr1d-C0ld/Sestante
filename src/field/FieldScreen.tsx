@@ -175,7 +175,7 @@ export function FieldScreen({ expedition: initial, canvas, findings, study, onEx
         const blob = await canvasBlob(canvas, "image/jpeg", 0.95);
         spec.plate.url = await api.uploadMedia(spec.id, blob, "jpg");
       }
-      const { data, rereadCtx } = await loadField(spec, (text) => live && setSteps((rows) => (rows[rows.length - 1] === text || /^Sviluppo la lastra: /.test(rows[rows.length - 1] ?? "") ? [...rows.slice(0, /^Sviluppo la lastra: /.test(rows[rows.length - 1] ?? "") ? -1 : rows.length), text] : [...rows, text]).slice(-9)), canvas, loadSettings().demSource);
+      const { data, rereadCtx } = await loadField(spec, (text) => live && setSteps((rows) => (rows[rows.length - 1] === text || /^Sviluppo la lastra: /.test(rows[rows.length - 1] ?? "") ? [...rows.slice(0, /^Sviluppo la lastra: /.test(rows[rows.length - 1] ?? "") ? -1 : rows.length), text] : [...rows, text]).slice(-9)), canvas, loadSettings().demSource, initial.terrainShift ?? null);
       if (!live) return;
       setSteps((rows) => [...rows, "Costruisco il mondo"].slice(-9));
       await new Promise((resolve) => setTimeout(resolve, 30));
@@ -831,12 +831,12 @@ export function FieldScreen({ expedition: initial, canvas, findings, study, onEx
       .gedi(engine.data.spec.bbox)
       .then((status) => {
         if (status.state !== "pronto") return;
-        const assessment = assessWorld(engine, status.shots);
+        const assessment = assessWorld(engine, status.shots, status.geoid);
         onLaser(assessment);
         if (initial.laserApplied) {
           applyLaser(engine, assessment);
           engine.refreshBuildings();
-          onLaser(assessWorld(engine, status.shots));
+          onLaser(assessWorld(engine, status.shots, status.geoid));
         }
       })
       .catch(() => undefined);
@@ -1751,6 +1751,13 @@ export function FieldScreen({ expedition: initial, canvas, findings, study, onEx
                   onLidarReport={(lidarReport) => updateExpedition((e) => ({ ...e, lidarReport }), true)}
                   onBenchReport={(benchReport) => updateExpedition((e) => ({ ...e, benchReport }), true)}
                   onLean={(lean) => updateExpedition((e) => ({ ...e, lean }), true)}
+                  onTerrainShift={(terrainShift) => {
+                    // Into the state too, so that a save already queued cannot write the old value back.
+                    updateExpedition((e) => ({ ...e, terrainShift }));
+                    void api.saveExpedition({ ...expedition, terrainShift }).then(() => {
+                      location.href = `${location.pathname}?spedizione=${engine.data.spec.id}`;
+                    });
+                  }}
                   onUseLidarTerrain={() => {
                     applySettings({ ...settings, demSource: "lidar" });
                     location.href = `${location.pathname}?spedizione=${engine.data.spec.id}`;

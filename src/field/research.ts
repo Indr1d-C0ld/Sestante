@@ -86,7 +86,7 @@ export function placeShots(shots: LaserShot[], projection: Projection): PlacedSh
   return shots.map((shot) => ({ ...shot, ...projection.toLocal(shot.lat, shot.lon) }));
 }
 
-export function assessWorld(engine: Engine, shots: LaserShot[]) {
+export function assessWorld(engine: Engine, shots: LaserShot[], geoid?: number | null) {
   return assessLaser(placeShots(shots, engine.data.projection), {
     heightAt: engine.heightAt,
     buildingAt: (x, z) => {
@@ -94,6 +94,7 @@ export function assessWorld(engine: Engine, shots: LaserShot[]) {
       return b ? { id: b.id, height: b.height, top: b.top, source: b.source, shadowHeight: b.shadowHeight, name: b.tags.name ?? (b.tags.building && b.tags.building !== "yes" ? b.tags.building : "edificio") } : null;
     },
     trees: engine.plate.trees,
+    geoid,
   });
 }
 

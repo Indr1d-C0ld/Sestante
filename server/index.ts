@@ -9,6 +9,7 @@ import { fetchBundle } from "./osm.ts";
 import { allSources, customSources, customSourcesProblem, DATA, resolveSource, ROOT, saveCustomSources, UA, waybackReleases, type TileSource } from "./sources.ts";
 import { copernicusDem, deepLayers, fires, gibsTile, isKnownImage, nasaCatalog, ndviSeries, openWeather, owmTile, placeArticles, placePhotos, PRODUCTS, proxiedImage, sentinelImage, sentinelScenes, sentinelSpectrum, servicesStatus } from "./earth.ts";
 import { forgetGedi, gediStatus, nasademGrid, startGedi } from "./nasa.ts";
+import { geoidAt } from "./geoid.ts";
 import { scrub } from "./secrets.ts";
 
 const PORT = Number(process.env.PORT ?? 4173);
@@ -369,7 +370,13 @@ async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise
   }
   if (path === "/api/earth/gedi" && req.method === "POST") return json(res, 200, await startGedi(earthBox())), true;
   if (path === "/api/earth/gedi" && req.method === "DELETE") return forgetGedi(earthBox()), json(res, 200, { ok: true }), true;
-  if (path === "/api/earth/gedi") return json(res, 200, gediStatus(earthBox())), true;
+  if (path === "/api/earth/gedi") {
+    const box = earthBox();
+    const status = gediStatus(box);
+    // The geoid at the box's centre goes along: it varies by centimetres across a box.
+    const geoid = status.state === "pronto" ? await geoidAt((box.s + box.n) / 2, (box.w + box.e) / 2) : null;
+    return json(res, 200, { ...status, geoid }), true;
+  }
   if (path === "/api/earth/catalog") return json(res, 200, await nasaCatalog(earthBox())), true;
   if (path === "/api/place/photos") return json(res, 200, await placePhotos(earthBox(), q.get("source") === "panoramax" || q.get("source") === "commons" ? (q.get("source") as "panoramax" | "commons") : null)), true;
   if (path === "/api/place/image") {

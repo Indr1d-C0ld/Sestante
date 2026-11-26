@@ -1,7 +1,7 @@
 import { fillGaps as closeGaps } from "../vision/lidar.ts";
 import { api, scaleCanvas, stitchPlate } from "../core/api.ts";
 import { bestZoom, pointInRing, Projection, ringArea, type Bbox } from "../core/geo.ts";
-import type { FieldSpec, PlateRef } from "../core/types.ts";
+import type { FieldSpec, PlateRef, TerrainShift } from "../core/types.ts";
 import type { AnalysisInput, AnalysisResult, Footprint, TreeHeightOrigin } from "../vision/analyze.ts";
 import type { WorkerReply } from "../vision/worker.ts";
 import { aboveLevels, STOREY_MIN, storeyHeight } from "../core/storeys.ts";
@@ -471,7 +471,7 @@ async function otherDemGrid(projection: Projection, size: number, spacing: numbe
   return { heights: out, holes };
 }
 
-export async function loadField(spec: FieldSpec, onStep: (text: string) => void, knownCanvas?: HTMLCanvasElement, demSource: "terrarium" | "copernicus" | "nasadem" | "lidar" = "terrarium"): Promise<{ data: FieldData; rereadCtx: Parameters<typeof interpretPlate>[2] }> {
+export async function loadField(spec: FieldSpec, onStep: (text: string) => void, knownCanvas?: HTMLCanvasElement, demSource: "terrarium" | "copernicus" | "nasadem" | "lidar" = "terrarium", terrainShift: TerrainShift | null = null): Promise<{ data: FieldData; rereadCtx: Parameters<typeof interpretPlate>[2] }> {
   const projection = new Projection(spec.bbox);
   const log: string[] = [];
 
@@ -510,6 +510,13 @@ export async function loadField(spec: FieldSpec, onStep: (text: string) => void,
       }
       log.push(`Quote da ${demName}: in media ${(count ? sum / count : 0).toFixed(1)} m rispetto a Terrarium.`);
     } else log.push(`${demName} non raggiunto: restano le quote Terrarium.`);
+  }
+
+  // Terrain models of cities stand above the street, the whole box at once: GEDI's ground, on the geoid, says by how much.
+  // A laser survey's bare ground needs no such correction.
+  if (terrainShift && demSource !== "lidar" && Number.isFinite(terrainShift.metres)) {
+    for (let k = 0; k < raw.length; k++) raw[k]! -= terrainShift.metres;
+    log.push(`Quote del terreno abbassate di ${terrainShift.metres.toFixed(1)} m: il suolo visto dal laser GEDI, su ${terrainShift.shots} impronte riportate al geoide, sta più in basso del modello.`);
   }
 
   onStep("Interrogo OpenStreetMap");
@@ -848,7 +855,7 @@ export async function loadField(spec: FieldSpec, onStep: (text: string) => void,
   plate.masses = plate.masses.filter((mass) => mass.area > 18);
 
   onStep("Guardo la terra intorno alla ripresa");
-  const far = await loadFarField(spec, projection, plate.ref).catch(() => null);
+  const far = await loadFarField(spec, projection, plate.ref, terrainShift && demSource !== "lidar" ? terrainShift.metres : 0).catch(() => null);
 
   onStep("Chiedo il tempo alla stazione");
   const weather = await api.weather<LiveWeather>(projection.lat0, projection.lon0).catch(() => null);
@@ -883,7 +890,7 @@ export async function loadField(spec: FieldSpec, onStep: (text: string) => void,
   };
 }
 
-async function loadFarField(spec: FieldSpec, projection: Projection, ref: PlateRef): Promise<FarField> {
+async function loadFarField(spec: FieldSpec, projection: Projection, ref: PlateRef, lowered = 0): Promise<FarField> {
   const span = 24000;
   const k = projection.k;
   const box: Bbox = {
@@ -906,7 +913,9 @@ async function loadFarField(spec: FieldSpec, projection: Projection, ref: PlateR
       const zz = -span / 2 + (j / (size - 1)) * span;
       const { lat, lon } = projection.toLatLon(x, zz);
       const h = sampleTerrarium(dem, demZ, lat, lon);
-      heights[j * size + i] = h > -500 && h < 9000 ? h : Number.NaN;
+      // The near terrain's correction, full over the city around the box and fading out by 6 km: no step at the rim.
+      const fade = Math.max(0, Math.min(1, (6000 - Math.hypot(x, zz)) / 4000));
+      heights[j * size + i] = h > -500 && h < 9000 ? h - lowered * fade : Number.NaN;
     }
   }
   fillGaps(heights, size);

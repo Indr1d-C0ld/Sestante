@@ -199,6 +199,8 @@ export type PlateLean = { x: number; z: number; source: "LiDAR" | "a mano"; deta
 export const plateKey = (ref: PlateRef) =>
   ref.kind === "wayback" ? `wayback:${ref.release}` : ref.kind === "tiles" ? `tiles:${ref.source}:${ref.date ?? ""}` : `upload:${ref.url}`;
 
+export type TerrainShift = { metres: number; shots: number; at: string };
+
 export type Expedition = {
   spec: FieldSpec;
   notes: Note[];
@@ -211,6 +213,8 @@ export type Expedition = {
   placement?: PhotoPlacement | null;
   strata?: StrataSummary | null;
   laserApplied?: boolean;
+  /** Metres taken off the terrain model at load, measured on GEDI's ground against the geoid. Not with a laser survey's terrain. */
+  terrainShift?: TerrainShift | null;
   treeModel?: TreeModel | null;
   masses?: MassReport[];
   studies?: SavedStudy[];

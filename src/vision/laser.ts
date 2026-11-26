@@ -55,6 +55,8 @@ export type LaserAssessment = {
   shadows: ErrorStats | null;
   trees: ErrorStats | null;
   perBuilding: Record<string, { measured: number; shots: number; share: number }>;
+  /** How far the world's terrain stands above the ground the laser saw, on the geoid; null without the geoid or with few shots. */
+  terrainLift: { metres: number; shots: number; spread: number } | null;
   /** How much taller the laser sees this box's estimated buildings than the world does, if it says so clearly. */
   scale: HeightScale | null;
 };
@@ -124,7 +126,7 @@ export function errorStats(label: string, errors: number[]): ErrorStats {
   };
 }
 
-export function assessLaser(shots: PlacedShot[], world: { heightAt: (x: number, z: number) => number; buildingAt: (x: number, z: number) => LaserBuilding | null; trees: LaserTree[] }): LaserAssessment {
+export function assessLaser(shots: PlacedShot[], world: { heightAt: (x: number, z: number) => number; buildingAt: (x: number, z: number) => LaserBuilding | null; trees: LaserTree[]; geoid?: number | null }): LaserAssessment {
   // First pass: what each disc sits on. The datum comes from open ground, where the lowest mode really is the ground.
   const footing = shots.map((shot) => {
     const hits = new Map<string, { building: LaserBuilding; count: number }>();
@@ -143,20 +145,33 @@ export function assessLaser(shots: PlacedShot[], world: { heightAt: (x: number, 
     return { shot, best, tallest, built: covered / DISC.length, crowns };
   });
 
-  // The terrain model is itself a surface model, so under a park it rides on the crowns, and the laser's true ground would pull
-  // the reference metres off. The SRTM height GEDI carries belongs to the same family as the terrain: it comes first.
-  let datumRows = shots.filter((shot) => shot.srtm != null).map((shot) => shot.srtm! - world.heightAt(shot.x, shot.z));
-  let datumFrom = `quota SRTM allegata a ${datumRows.length} impronte`;
-  if (datumRows.length < 3) {
+  // The reference is the geoid where the server has it. Without it: the SRTM height GEDI carries, which belongs to the same
+  // family as the terrain (a surface model, riding on crowns and blocks); against the laser survey it was 0.6 to 7 m off.
+  const geoid = world.geoid != null && Number.isFinite(world.geoid) ? world.geoid : null;
+  let datumRows = geoid != null ? [geoid] : shots.filter((shot) => shot.srtm != null).map((shot) => shot.srtm! - world.heightAt(shot.x, shot.z));
+  let datumFrom = geoid != null ? "geoide EGM96 della NGA" : `quota SRTM allegata a ${datumRows.length} impronte`;
+  if (geoid == null && datumRows.length < 3) {
     datumRows = footing.filter((row) => row.built < 0.1 && !row.crowns.length && row.shot.good).map((row) => row.shot.ground - world.heightAt(row.shot.x, row.shot.z));
     datumFrom = `${datumRows.length} impronte su terreno aperto`;
   }
-  if (datumRows.length < 3) {
+  if (geoid == null && datumRows.length < 3) {
     datumRows = shots.map((shot) => shot.ground - world.heightAt(shot.x, shot.z));
     datumFrom = `tutte le ${datumRows.length} impronte`;
   }
   const datum = median(datumRows);
   const datumSpread = median(datumRows.map((v) => Math.abs(v - datum)));
+
+  // How far the world's terrain stands above the ground the laser saw, on the geoid. Terrain models of cities are partly
+  // surface models: against airborne surveys they stood 0 to 12 m too high (London 0, Lyon 12), as a shift of the whole box
+  // rather than bumps under the blocks. Every good shot off the crowns counts: its lowest mode is the ground.
+  let terrainLift: LaserAssessment["terrainLift"] = null;
+  if (geoid != null) {
+    const rows = footing.filter((row) => row.shot.good && !(row.built < 0.05 && row.crowns.length)).map((row) => world.heightAt(row.shot.x, row.shot.z) - (row.shot.ground - geoid));
+    if (rows.length >= 8) {
+      const metres = median(rows);
+      terrainLift = { metres, shots: rows.length, spread: median(rows.map((v) => Math.abs(v - metres))) };
+    }
+  }
 
   const readings: ShotReading[] = footing.map(({ shot, best, built, crowns }) => {
     const share = best ? best.count / DISC.length : 0;
@@ -198,6 +213,7 @@ export function assessLaser(shots: PlacedShot[], world: { heightAt: (x: number, 
   );
 
   return {
+    terrainLift,
     scale,
     datum,
     datumFrom,

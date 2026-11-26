@@ -113,6 +113,8 @@ export type GediStatus = {
   granules: number;
   shots: LaserShot[];
   at: string | null;
+  /** EGM96 geoid height at the box's centre, added by the route when the shots are ready. */
+  geoid?: number | null;
 };
 
 const HARMONY = "https://harmony.earthdata.nasa.gov";

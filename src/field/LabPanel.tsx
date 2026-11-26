@@ -4,7 +4,7 @@ import { alignments, astroEvents, horizonAltitude, planAxis } from "../core/arch
 import { formatLatLon, type Projection } from "../core/geo.ts";
 import { floodStats, sectionAlong, viewshed, type Section } from "../core/fieldwork.ts";
 import { sunEvents } from "../core/solar.ts";
-import type { Expedition, Hypothesis, Note, NoteKind, PlateVersion, StrataSummary, Investigation, BenchReport, LidarReport, PlateLean, PhotoFindRow, PhotoPlacement as PlacedPhoto, SavedRoute, SavedStudy } from "../core/types.ts";
+import type { Expedition, Hypothesis, Note, NoteKind, PlateVersion, StrataSummary, Investigation, BenchReport, LidarReport, PlateLean, PhotoFindRow, PhotoPlacement as PlacedPhoto, SavedRoute, SavedStudy, TerrainShift } from "../core/types.ts";
 import type { ShadowPlate } from "../vision/shadowTest.ts";
 import type { Engine } from "../world/engine.ts";
 import { PROVENANCE_LEGEND } from "../world/shading.ts";
@@ -18,6 +18,7 @@ import { AncientRoutes, Dossier, Inquiry, LidarTab, Studies } from "./LabExtra.t
 import { PhotoFind } from "./PhotoFind.tsx";
 import { LeanTab } from "./LeanTab.tsx";
 import { demDifference, fitTrees, type ErrorStats, type LaserAssessment, type TreeFit, type TreeModel } from "../vision/laser.ts";
+import { loadSettings } from "../world/settings.ts";
 
 export type LabTab = "inclinazione" | "riprese" | "laser" | "rilievo" | "volumi" | "ipotesi" | "sezione" | "vista" | "cielo" | "acqua" | "origine" | "esporta" | "servizi" | "studi" | "indagine" | "vie" | "lidar" | "foto";
 
@@ -83,6 +84,7 @@ export type LabProps = {
   onBenchReport: (row: BenchReport) => void;
   onLean: (lean: PlateLean | null) => void;
   onUseLidarTerrain: () => void;
+  onTerrainShift: (shift: TerrainShift | null) => void;
   onPlacement: (row: PlacedPhoto) => Promise<unknown> | void;
   onPhotoFinds: (list: PhotoFindRow[]) => void;
   addNote: AddNote;
@@ -379,8 +381,54 @@ function TreeSection({ engine, expedition, laser, onTreeModel, addNote, toast }:
   );
 }
 
+/**
+ * The terrain's height against GEDI's ground. Only a shift of the whole box: the shape under the blocks was within a metre
+ * or two of the laser surveys, the level was not. Applied at the next load, so that everything stands on the new ground.
+ */
+function TerrainLift(props: { lift: NonNullable<LaserAssessment["terrainLift"]>; applied: TerrainShift | null; survey: boolean; onShift: (shift: TerrainShift | null) => void; addNote: AddNote }) {
+  const { lift, applied, survey, onShift, addNote } = props;
+  const clear = lift.shots >= 8 && Math.abs(lift.metres) > Math.max(1, lift.spread);
+  const total = (applied?.metres ?? 0) + lift.metres;
+  return (
+    <div>
+      <p className="small">
+        {survey
+          ? "Il terreno viene dal rilievo laser: la sua quota non va corretta."
+          : `Sul geoide, il suolo visto dal laser in ${lift.shots} impronte sta ${Math.abs(lift.metres).toFixed(1)} m ${lift.metres > 0 ? "sotto" : "sopra"} il terreno del mondo (dispersione ${lift.spread.toFixed(1)} m).`}
+        {applied ? ` Le quote sono già state corrette di ${applied.metres.toFixed(1)} m.` : ""}
+        {!survey && !clear ? " Lo scarto è nel rumore della misura: le quote restano come sono." : ""}
+      </p>
+      {!survey && (
+        <p className="hint">
+          I modelli del terreno, nelle città, stanno sopra la strada: misurati contro i rilievi laser, da 0 m a Londra a 12 m a Lione, come uno spostamento di tutto il riquadro e non come gobbe sotto gli isolati. La scena non cambia aspetto; cambiano le quote che leggi (altimetro, sezioni, picchetti, allagamento). Su sette riquadri la stima ha sbagliato di meno di un metro in sei e di 4 m a Parigi, dove le impronte erano 9.
+        </p>
+      )}
+      {!survey && (
+        <div className="row wrap">
+          {clear && (
+            <button
+              className="btn tiny"
+              onClick={() => {
+                addNote("sistema", `Quote del terreno corrette di ${total.toFixed(1)} m`, `Il suolo visto dal laser GEDI, su ${lift.shots} impronte riportate al geoide EGM96, sta ${lift.metres > 0 ? "più in basso" : "più in alto"} del modello del terreno. Il mondo si ricarica sulle quote nuove.`, { instrument: "GEDI" });
+                onShift({ metres: total, shots: lift.shots, at: new Date().toISOString() });
+              }}
+            >
+              Correggi le quote del terreno e ricarica
+            </button>
+          )}
+          {applied && (
+            <button className="btn tiny" onClick={() => onShift(null)}>
+              Torna alle quote del modello
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Laser(props: LabProps) {
-  const { engine, expedition, laser, laserShown, onLaser, onShowLaser, onLaserApplied, addNote, toast, onClose } = props;
+  const { engine, expedition, laser, laserShown, onLaser, onShowLaser, onLaserApplied, onTerrainShift, addNote, toast, onClose } = props;
   const box = expedition.spec.bbox;
   const [status, setStatus] = useState<GediStatus | null>(null);
   useEffect(() => {
@@ -390,7 +438,7 @@ function Laser(props: LabProps) {
       const row = await api.gedi(box).catch(() => null);
       if (!live || !row) return;
       setStatus(row);
-      if (row.state === "pronto" && !laser) onLaser(assessWorld(engine, row.shots));
+      if (row.state === "pronto" && !laser) onLaser(assessWorld(engine, row.shots, row.geoid));
       if (row.state === "in corso") timer = window.setTimeout(() => void poll(), 4000);
     };
     void poll();
@@ -408,7 +456,7 @@ function Laser(props: LabProps) {
     const { changed, scaled } = applyLaser(engine, a);
     engine.refreshBuildings();
     onLaserApplied();
-    if (status) onLaser(assessWorld(engine, status.shots));
+    if (status) onLaser(assessWorld(engine, status.shots, status.geoid));
     const scaleLine = scaled && a.scale ? ` Prima, ${scaled} altezze stimate sono state corrette del ${((a.scale.pooled - 1) * 100).toFixed(0)}% in media: su ${a.scale.discs} dischi costruiti il laser vede gli edifici di questo riquadro ${a.scale.pooled > 1 ? "più alti" : "più bassi"} di come li stima il mondo.` : "";
     addNote("sistema", `Il laser ha fissato ${changed} altezze`, `Solo edifici senza altezza scritta sulla mappa, con l'impronta quasi tutta dentro la sagoma.${scaleLine} La data dello scatto laser può non coincidere con quella della lastra.`, { instrument: "GEDI", values: { altezze: String(changed), corrette: String(scaled) } });
     toast(`${changed} altezze ora vengono dal laser${scaled ? `, ${scaled} corrette in tutto il riquadro` : ""}.`);
@@ -464,6 +512,7 @@ function Laser(props: LabProps) {
               {a.scale.applied ? "Usando il laser, tutte le altezze stimate del riquadro vengono corrette di conseguenza, fonte per fonte; quelle scritte sulla mappa restano." : "Lo scarto è entro il 5%, il rumore della misura: le altezze stimate restano come sono."}
             </p>
           )}
+          {a.terrainLift && <TerrainLift lift={a.terrainLift} applied={expedition.terrainShift ?? null} survey={loadSettings().demSource === "lidar"} onShift={onTerrainShift} addNote={addNote} />}
           <dl className="kv">
             <dt>Riferimento locale</dt>
             <dd>

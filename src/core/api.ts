@@ -28,7 +28,7 @@ export type DeepLayer = { id: string; label: string; note: string; ext: string; 
 export type NasaEntry = { id: string; label: string; note: string; count: number | null; newest: string | null };
 export type PlacePhoto = { id: string; source: "panoramax" | "commons"; title: string; lat: number; lon: number; date: string | null; heading: number | null; fov: number | null; pano: boolean; thumb: string; full: string; author: string; license: string; link: string };
 export type PlaceArticle = { id: string; title: string; lat: number; lon: number; text: string; link: string; lang: string };
-export type GediStatus = { state: "assente" | "in corso" | "pronto" | "fallito"; progress: number; message: string; granules: number; shots: LaserShot[]; at: string | null };
+export type GediStatus = { state: "assente" | "in corso" | "pronto" | "fallito"; progress: number; message: string; granules: number; shots: LaserShot[]; at: string | null; geoid?: number | null };
 export type ServiceState = { id: string; label: string; state: "pronta" | "assente" | "scaduta"; detail: string };
 
 const boxQuery = (b: Bbox) => `s=${b.s}&w=${b.w}&n=${b.n}&e=${b.e}`;
