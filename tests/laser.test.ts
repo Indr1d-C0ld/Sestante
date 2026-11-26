@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { deflateRawSync } from "node:zlib";
 import { granuleDate, readZipEntry, sampleHgt } from "../server/nasa.ts";
-import { assessLaser, correctedHeight, demDifference, fitTrees, type LaserBuilding, type PlacedShot, type TreePair } from "../src/vision/laser.ts";
+import { assessLaser, correctedHeight, demDifference, fitTrees, heightScale, type LaserBuilding, type PlacedShot, type TreePair } from "../src/vision/laser.ts";
 
 const shot = (x: number, z: number, ground: number, top: number, extra: Partial<PlacedShot> = {}): PlacedShot => ({ id: `${x}:${z}`, lat: 0, lon: 0, x, z, ground, top, rh98: top - ground, rh50: 0, srtm: null, sensitivity: 0.98, good: true, date: "2023-05-01", beam: "BEAM0000", solar: -10, cover: null, ...extra });
 
@@ -187,4 +187,25 @@ test("la variazione individuale è ridotta ma resta in ordine", () => {
   const tall = correctedHeight(model, 0, 0, 16);
   assert.ok(tall > small);
   assert.ok(tall / small < 16 / 8);
+});
+
+test("l'altezza dell'edificio è quella relativa del laser, anche se il terreno del mondo in città sta più in alto", () => {
+  // The world's terrain sits 10 m above the street, as surface models do in dense cities.
+  const raised = { ...world, heightAt: () => 60 };
+  const a = assessLaser([shot(200, 0, 97, 97), shot(-200, 0, 97, 97), shot(0, 200, 97, 97), shot(0, 0, 97, 97 + 34)], raised);
+  assert.equal(a.readings.find((row) => row.kind === "edificio")!.measured, 34);
+});
+
+test("la taratura del riquadro corregge le altezze stimate solo se il laser lo dice chiaramente", () => {
+  const discs = (ratio: number, n: number, source = "quartiere") => Array.from({ length: n }, (_, i) => ({ rh98: (10 + i) * ratio, model: 10 + i, source }));
+  const high = heightScale(discs(1.3, 20))!;
+  assert.ok(high.applied);
+  assert.ok(Math.abs(high.pooled - (1 + 0.3 * (20 / 30))) < 1e-9);
+  // A source with discs of its own moves towards its own ratio.
+  const mixed = heightScale([...discs(1.3, 20), ...discs(1.0, 10, "OSM piani")])!;
+  assert.ok(mixed.bySource["OSM piani"]! < mixed.pooled && mixed.bySource.quartiere! > mixed.pooled);
+  // Within 5% nothing is changed; written heights are no evidence; too few discs say nothing.
+  assert.equal(heightScale(discs(1.03, 30))!.applied, false);
+  assert.equal(heightScale(discs(1.5, 30, "OSM height")), null);
+  assert.equal(heightScale(discs(1.5, 4)), null);
 });

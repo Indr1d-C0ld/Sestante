@@ -8,7 +8,7 @@ import { changeVolume, complexRange, formatVolume, INTERVAL_FACTOR, massVolume, 
 import type { AnalysisResult } from "../vision/analyze.ts";
 import { bestHeight, predictShadow, scoreShadow, verdict, type ShadowPlate, type ShadowScore } from "../vision/shadowTest.ts";
 import { absentOn, buildingPresence, combineHeights, type StratumRead } from "../vision/timeline.ts";
-import { assessLaser, correctedHeight, FOOTPRINT_RADIUS, type LaserAssessment, type LaserShot, type PlacedShot, type TreeModel, type TreePair } from "../vision/laser.ts";
+import { assessLaser, correctedHeight, FIXED_SOURCES, FOOTPRINT_RADIUS, type LaserAssessment, type LaserShot, type PlacedShot, type TreeModel, type TreePair } from "../vision/laser.ts";
 import type { Engine } from "../world/engine.ts";
 import { interpretPlate, readPlate, type Building, type TreeInstance } from "./load.ts";
 
@@ -315,9 +315,27 @@ export function correctTrees(trees: TreeInstance[], model: TreeModel | null) {
   }
 }
 
-/** Lets the laser set the heights nobody measured. Written heights stay: a disagreement with the map is shown, not overruled. */
+/**
+ * Lets the laser set the heights nobody measured. Written heights stay: a disagreement with the map is shown, not overruled.
+ * First the box-wide correction, when the laser says clearly that estimated heights run high or low here, then the heights
+ * of the buildings a footprint falls on. Once per world: a corrected height is not corrected again.
+ */
 export function applyLaser(engine: Engine, assessment: LaserAssessment) {
   let changed = 0;
+  let scaled = 0;
+  const scale = assessment.scale;
+  if (scale?.applied && !engine.data.buildings.some((b) => b.scaledBy)) {
+    for (const building of engine.data.buildings) {
+      if (FIXED_SOURCES.has(building.source)) continue;
+      const k = scale.bySource[building.source] ?? scale.pooled;
+      const ground = building.top - building.height;
+      building.height *= k;
+      building.roofHeight *= k;
+      building.top = ground + building.height;
+      building.scaledBy = k;
+      scaled++;
+    }
+  }
   for (const building of engine.data.buildings) {
     const reading = assessment.perBuilding[building.id];
     if (!reading || reading.share < 0.7 || reading.measured < 2 || building.source === "OSM height" || building.source === "OSM piani" || building.source === "laser GEDI" || building.source === "ripresa") continue;
@@ -329,7 +347,7 @@ export function applyLaser(engine: Engine, assessment: LaserAssessment) {
     if (building.levels) building.levels = Math.max(1, Math.round((reading.measured - building.roofHeight) / 3.2));
     changed++;
   }
-  return changed;
+  return { changed, scaled };
 }
 
 /** Height gained or lost between two surface models, in the plate's frame. Blue rose, orange sank, grey within the noise. */

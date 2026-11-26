@@ -4,7 +4,7 @@
 ![Node 24 o più recente](https://img.shields.io/badge/node-24-339933?logo=node.js&logoColor=white)
 ![three.js](https://img.shields.io/badge/three.js-r187-black?logo=three.js)
 ![WebGL2](https://img.shields.io/badge/WebGL-2-990000?logo=webgl&logoColor=white)
-![Test](https://img.shields.io/badge/test-125-success)
+![Test](https://img.shields.io/badge/test-127-success)
 
 Scegli un riquadro di Terra. Sestante ne legge la ripresa satellitare, la ricostruisce in 3D e ti ci fa camminare dentro in prima persona, con la borsa di strumenti di un ricercatore sul campo e un registro che si scrive da solo.
 
@@ -68,7 +68,7 @@ Poi apri http://localhost:4173. Senza chiavi funziona già tutto ciò che usa fo
 | --- | --- |
 | `npm start` | Server di produzione sulla porta 4173, con la build in `dist/` |
 | `npm run dev` | Sviluppo con Vite e ricarica a caldo (usa anche la porta successiva) |
-| `npm test` | I 125 test, su scene sintetiche di cui si conosce la verità |
+| `npm test` | I 127 test, su scene sintetiche di cui si conosce la verità |
 | `npm run typecheck` | Controllo dei tipi |
 
 Variabili d'ambiente: `PORT` per la porta, `SESTANTE_DATA` per la cartella dei dati (predefinita `data/` nel progetto). Il server ascolta solo su `127.0.0.1`.
@@ -335,7 +335,24 @@ Le legge solo il server: non arrivano mai al browser, non finiscono nei salvatag
 | Ombra di una sola ripresa (lettura precedente) | 21 | −2,6 m | 5,0 m |
 | Piani scritti nella mappa × 3,2 m, prima che vi si aggiungessero tetto e basamento | 10 | −4,5 m | 5,2 m |
 
-I gruppi di edifici non sono identici e il campione è piccolo: sono ordini di grandezza, non una statistica. GEDI riporta le quote sull'ellissoide: il riferimento locale si ricava dalla quota SRTM allegata alle impronte, perché il terreno di Sestante, sotto un parco, poggia sulle chiome. Il laser ha i suoi limiti: il disco è di 25 m, e la cima può venire da un vicino. Sul solo riquadro del Colosseo le impronte buone su edifici sono appena 10. Ogni riquadro calcola la propria tabella nel Laboratorio. Anche gli edifici possono cambiare fra la data del laser e quella della lastra.
+I gruppi di edifici non sono identici e il campione è piccolo: sono ordini di grandezza, non una statistica. Questi numeri vengono dalla lettura precedente del laser, la cima meno il terreno del mondo, che in città stava più bassa del vero (vedi sotto) e non sono stati rimisurati.
+
+**Il laser e il suolo delle città.** Confrontato col rilievo aereo in sette riquadri, il terreno di Sestante sotto gli edifici sta sopra la strada: 12 m a Lione, 10 m a Parigi, 5 m a Zurigo e ad Anversa. Il modello del terreno nelle città è in parte una superficie, e gli isolati lo sollevano. La cima vista da GEDI era giusta, entro 1-2,5 m da quella del rilievo, ma riportata a quel suolo dava edifici troppo bassi: 5,7 m in meno su 62 edifici. Ora l'altezza di un edificio è quella relativa del laser stesso (rh98, il ritorno più alto sopra il suolo che il laser vede nel disco): 1,6 m in meno, con un errore tipico di 3,3 m. GEDI riporta le quote sull'ellissoide; il riferimento locale, che serve ancora per disegnare le impronte, si ricava dalla quota SRTM allegata alle impronte, perché il terreno di Sestante, sotto un parco, poggia sulle chiome.
+
+**La taratura del riquadro.** Le impronte che cadono su un edificio solo sono poche, da 4 a 22 per riquadro, ma quelle su area costruita sono da 25 a 96. Su ciascuna il laser vede la cosa più alta del disco, e la si confronta con l'edificio più alto che il mondo vi mette. Il rapporto mediano dice se le altezze stimate del riquadro sono basse o alte: si avvicina a 1 quando i dischi sono pochi, si fa fonte per fonte dove una fonte ha dischi suoi, e sotto il 5% non cambia nulla, perché è il rumore della misura. Il pulsante **Usa il laser per le altezze non mappate** applica prima questa correzione a tutte le altezze stimate, poi fissa quelle degli edifici colpiti; le altezze scritte sulla mappa restano. Contro il rilievo aereo, sugli edifici con altezza stimata che il laser non ha colpito:
+
+| Luogo | Fattore | Prima: tendenza, errore tipico | Dopo |
+| --- | --- | --- | --- |
+| Parigi | 0,97, non applicato | −0,2, 1,9 m | uguale |
+| Londra | 1,01, non applicato | +0,4, 2,5 m | uguale |
+| Zurigo | 1,07 | −1,1, 2,4 m | +0,4, 2,1 m |
+| Anversa, centro | 1,38 | −4,9, 5,3 m | +0,6, 5,4 m |
+| Anversa, sud-est | 1,18 | −3,4, 4,3 m | −1,5, 3,3 m |
+| Lione, Presqu'île | 1,24 | −5,8, 6,1 m | −0,2, 2,6 m |
+| Lione, riva sinistra | 1,02, non applicato | −0,4, 4,2 m | uguale |
+| Tutti, 4.300 edifici | | −2,3, 3,9 m | −0,2, 3,1 m |
+
+Ad Anversa centro sparisce la tendenza ma l'errore tipico cresce di poco: lì le fonti sbagliano in misura diversa (le stime per tipo edilizio di 10 m, quelle per quartiere di 2), e un fattore solo non le segue tutte. Con le altezze corrette, i tetti a falde smettono di peggiorare le cose: a Lione la superficie dei tetti passa da 6,57 a 4,91 m dal rilievo, e le mansarde della mappa battono il tetto piatto (3,94 contro 4,59 m); a Zurigo da 2,78 a 2,38 m, col tetto presunto ora meglio del piatto (2,28 contro 3,31). I pesi sono stati scelti su questi stessi riquadri: è una misura in campione. GEDI non copre oltre 51,6° di latitudine, quindi né Amsterdam, né Rotterdam, né Manchester. Il laser ha i suoi limiti: il disco è di 25 m, e la cima può venire da un vicino. Sul solo riquadro del Colosseo le impronte buone su edifici sono appena 10. Ogni riquadro calcola la propria tabella nel Laboratorio. Anche gli edifici possono cambiare fra la data del laser e quella della lastra.
 
 **Gli alberi.** L'altezza letta per ogni singola chioma, con o senza ombra, risulta quasi slegata da quella del laser: correlazione fra −0,06 e +0,09 nei tre luoghi provati. Una foto dall'alto non basta. Il laser però dice quanto sono alti gli alberi di una zona, quindi la correzione porta ogni gruppo alla quota misurata e lascia a ciascun albero solo una variazione ridotta, che è aspetto e non misura. Viene scelta e verificata per ogni riquadro lasciando fuori intere orbite, e si propone solo se l'errore scende almeno del 10%:
 
@@ -437,6 +454,8 @@ Ogni strumento è stato provato dove la risposta esiste già. I test automatici 
 | Altezze dai piani OSM | GEDI a Prati, poi LiDAR a Parigi, Londra e Zurigo | A Prati 5,2 m, tendenza −4,5 m, su 10 impronte. Con tetto e basamento aggiunti: 3,5 m, tendenza −2,3 m, su 838 edifici di quattro città non usate per ricavare la correzione |
 | Altezza di una singola chioma | GEDI, tre zone di Roma | Correlazione circa zero: una foto dall'alto non la dà. Corretta per gruppi: da 9,4 a 5,9 m a Prati, su orbite escluse |
 | Intervallo delle altezze | GEDI, tre zone di Roma | 48 impronte su 54 dentro l'intervallo |
+| Altezze stimate, tarate col laser GEDI | LiDAR in sette riquadri di Parigi, Londra, Zurigo, Anversa e Lione | Errore tipico da 3,9 a 3,1 m, tendenza da −2,3 a −0,2 m, su 4.300 edifici; pesi scelti sugli stessi riquadri |
+| Altezza di un edificio letta da GEDI | LiDAR, 62 edifici in sette riquadri | Con rh98 tendenza −1,6 m, errore tipico 3,3 m; la lettura precedente, riportata al terreno del mondo, −5,7 m |
 | Volume da pianta e altezza | Piramide di Cheope | 2,42 milioni di m³ (2,33–2,51) contro 2,45 geometrici |
 | Massa dal rilievo | Monte Testaccio | 458 600 m³ (225 700–523 600) contro circa 580 000 pubblicati: sotto il vero e fuori dall'intervallo |
 | Massa dal rilievo | Piramide di Cheope | Da 0,73 a 1,53 milioni di m³ contro 2,45: il radar non segue le pareti ripide, e lo strumento avvisa |
@@ -658,6 +677,7 @@ Tecnologie: Node con TypeScript nativo e `node:sqlite` sul server; React 19, Map
 - La rete FLAIR è addestrata in Francia su foto aeree a 0,2 m da aprile a novembre: su riprese satellitari, altrove e d'inverno vede meno, e la sua combinazione con le regole è tarata su undici riquadri europei.
 - Le anomalie della vegetazione lavorano a 10 m per pixel: mostrano solo tracce grandi, e la causa va verificata.
 - GEDI passa a strisce: un riquadro piccolo può ricevere poche impronte o nessuna, e solo un terzo circa è di buona qualità in città. Non copre oltre 51,6° di latitudine.
+- Il terreno sotto le città sta più in alto della strada, da 2 a 12 m nei riquadri confrontati col rilievo aereo: il modello del terreno è in parte una superficie, sollevata dagli isolati. Le altezze degli edifici sono relative al loro suolo e non ne risentono, ma le quote assolute sì; dove c'è un rilievo laser, il suo terreno lo corregge.
 - ICESat-2 e gli altri prodotti NASA del catalogo vengono solo elencati.
 - Le guglie sottili risultano basse nel LiDAR: la Domtoren misura 106,8 m su 112,3, Salisbury 100,3 su 123. Le tracce del rilievo locale includono filari, fossi e opere moderne, e vanno guardate.
 - La ricerca della foto copre al massimo il riquadro più 10 km, e le nuvole a volte ingannano la linea del cielo.

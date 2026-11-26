@@ -405,12 +405,13 @@ function Laser(props: LabProps) {
   const a = laser;
   const useIt = () => {
     if (!a) return;
-    const changed = applyLaser(engine, a);
+    const { changed, scaled } = applyLaser(engine, a);
     engine.refreshBuildings();
     onLaserApplied();
     if (status) onLaser(assessWorld(engine, status.shots));
-    addNote("sistema", `Il laser ha fissato ${changed} altezze`, "Solo edifici senza altezza scritta sulla mappa, con l'impronta quasi tutta dentro la sagoma. La data dello scatto laser può non coincidere con quella della lastra.", { instrument: "GEDI", values: { altezze: String(changed) } });
-    toast(`${changed} altezze ora vengono dal laser.`);
+    const scaleLine = scaled && a.scale ? ` Prima, ${scaled} altezze stimate sono state corrette del ${((a.scale.pooled - 1) * 100).toFixed(0)}% in media: su ${a.scale.discs} dischi costruiti il laser vede gli edifici di questo riquadro ${a.scale.pooled > 1 ? "più alti" : "più bassi"} di come li stima il mondo.` : "";
+    addNote("sistema", `Il laser ha fissato ${changed} altezze`, `Solo edifici senza altezza scritta sulla mappa, con l'impronta quasi tutta dentro la sagoma.${scaleLine} La data dello scatto laser può non coincidere con quella della lastra.`, { instrument: "GEDI", values: { altezze: String(changed), corrette: String(scaled) } });
+    toast(`${changed} altezze ora vengono dal laser${scaled ? `, ${scaled} corrette in tutto il riquadro` : ""}.`);
   };
   const buildingRows = a?.readings.filter((row) => row.kind === "edificio" && row.shot.good) ?? [];
   const dates = status?.shots.map((row) => row.date).filter(Boolean).sort() ?? [];
@@ -457,6 +458,12 @@ function Laser(props: LabProps) {
             </div>
           )}
           {a.counts.total === 0 && <p className="hint">Nessuna impronta cade in questo riquadro: GEDI passa a strisce distanti centinaia di metri. Un riquadro più grande ne prenderà di più.</p>}
+          {a.scale && (
+            <p className="small">
+              Su {a.scale.discs} dischi costruiti il laser vede gli edifici con altezza stimata {Math.abs(a.scale.pooled - 1) < 0.005 ? "come li stima il mondo" : `${Math.abs((a.scale.pooled - 1) * 100).toFixed(0)}% ${a.scale.pooled > 1 ? "più alti" : "più bassi"} di come li stima il mondo`}.{" "}
+              {a.scale.applied ? "Usando il laser, tutte le altezze stimate del riquadro vengono corrette di conseguenza, fonte per fonte; quelle scritte sulla mappa restano." : "Lo scarto è entro il 5%, il rumore della misura: le altezze stimate restano come sono."}
+            </p>
+          )}
           <dl className="kv">
             <dt>Riferimento locale</dt>
             <dd>

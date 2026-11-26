@@ -44,6 +44,8 @@ export type Building = {
   roofFrom?: "mappa" | "colore" | "presunta" | "LiDAR" | "nessuna";
   /** Hidden because the laser survey split it into parts of different heights (they carry the id with ":rilievo"). */
   splitBySurvey?: boolean;
+  /** The factor GEDI's box-wide correction applied to this estimated height, if any (vision/laser.ts heightScale). */
+  scaledBy?: number;
   /** The straight skeleton under a pitched roof that is not a plain rectangle: one plane per side (core/skeleton.ts). */
   skeleton?: Skeleton;
   /** The surveyed roof, heights above the ground, when the laser survey has been applied to this building. */

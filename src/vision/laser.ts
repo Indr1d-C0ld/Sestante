@@ -1,6 +1,11 @@
 /**
  * GEDI measures from orbit with a laser, independently of every photograph: it is the one outside check on what
  * the shadows say. A footprint is a 25 m disc, so a reading counts for a building only when the building fills it. Pure code.
+ *
+ * A building's height is the shot's own relative height (rh98: highest return above the lowest mode, the ground the laser
+ * itself saw in the disc). It used to be the top minus the world's terrain, and in cities that terrain stands metres above
+ * the street (Lyon 12 m, Paris 10 m, Zurich and Antwerp 5 m, against the laser survey): on 62 buildings of seven boxes
+ * the old reading ran 5.7 m low, rh98 1.6 m low, with a typical error of 3.3 m.
  */
 export type LaserShot = {
   id: string;
@@ -50,7 +55,43 @@ export type LaserAssessment = {
   shadows: ErrorStats | null;
   trees: ErrorStats | null;
   perBuilding: Record<string, { measured: number; shots: number; share: number }>;
+  /** How much taller the laser sees this box's estimated buildings than the world does, if it says so clearly. */
+  scale: HeightScale | null;
 };
+
+/** Heights that are measured or written: the box-wide correction leaves them alone. */
+export const FIXED_SOURCES = new Set(["OSM height", "LiDAR", "laser GEDI", "ripresa"]);
+
+export type HeightScale = {
+  /** Factor for every estimated height, and per source where the source has discs of its own. */
+  pooled: number;
+  bySource: Record<string, number>;
+  discs: number;
+  /** False when the factor is within 5% of 1: then nothing is changed. */
+  applied: boolean;
+};
+
+/**
+ * The box's estimated heights against the laser, over every built-up disc: rh98 there is the tallest thing in the disc,
+ * set against the tallest modelled building in it. The median ratio, drawn towards 1 when the discs are few (n/(n+10) of
+ * the way), and per source drawn towards that. Within 5% of 1 nothing is changed: the ratio's own noise is about that.
+ * Checked against the airborne survey on seven boxes (Paris, London, Zurich, two in Antwerp, two in Lyon), scored on every
+ * building with an estimated height: typical error from 3.9 to 3.1 m and bias from -2.3 to -0.2 m. Lyon's centre went from
+ * 6.1 to 2.6 m, Antwerp's south-east from 4.3 to 3.3, Zurich from 2.4 to 2.1; Paris, London and Lyon's left bank stayed as
+ * they were (factor within 5%); Antwerp's centre lost its bias (-4.9 to 0.6 m) but its typical error rose from 5.3 to 5.5.
+ * The weights were chosen on those same boxes.
+ */
+export function heightScale(discs: { rh98: number; model: number; source: string }[], k = 10, dead = 0.05): HeightScale | null {
+  const usable = discs.filter((d) => d.model >= 3 && d.rh98 > 2 && d.rh98 < MAX_PLAUSIBLE && !FIXED_SOURCES.has(d.source));
+  if (usable.length < 5) return null;
+  const pooled = 1 + (median(usable.map((d) => d.rh98 / d.model)) - 1) * (usable.length / (usable.length + k));
+  const bySource: Record<string, number> = {};
+  for (const source of new Set(usable.map((d) => d.source))) {
+    const rows = usable.filter((d) => d.source === source);
+    bySource[source] = pooled + (median(rows.map((d) => d.rh98 / d.model)) - pooled) * (rows.length / (rows.length + k));
+  }
+  return { pooled, bySource, discs: usable.length, applied: Math.abs(pooled - 1) > dead };
+}
 
 export const FOOTPRINT_RADIUS = 12.5;
 const MAX_PLAUSIBLE = 450;
@@ -97,8 +138,9 @@ export function assessLaser(shots: PlacedShot[], world: { heightAt: (x: number, 
       else hits.set(building.id, { building, count: 1 });
     }
     const best = [...hits.values()].sort((a, b) => b.count - a.count)[0] ?? null;
+    const tallest = [...hits.values()].sort((a, b) => b.building.height - a.building.height)[0]?.building ?? null;
     const crowns = world.trees.filter((tree) => Math.hypot(tree.x - shot.x, tree.z - shot.z) <= FOOTPRINT_RADIUS + tree.r * 0.5);
-    return { shot, best, built: covered / DISC.length, crowns };
+    return { shot, best, tallest, built: covered / DISC.length, crowns };
   });
 
   // The terrain model is itself a surface model, so under a park it rides on the crowns, and the laser's true ground would pull
@@ -120,8 +162,8 @@ export function assessLaser(shots: PlacedShot[], world: { heightAt: (x: number, 
     const share = best ? best.count / DISC.length : 0;
     if (best && share >= 0.55) {
       const b = best.building;
-      const measured = shot.top - datum - (b.top - b.height);
-      // A top below the building's own ground, or up among the clouds, says the reference failed here: it is no measure of the building.
+      const measured = shot.rh98;
+      // Under a metre, or up among the clouds, the laser found no ground or no roof here: it is no measure of the building.
       if (measured < 1 || measured > MAX_PLAUSIBLE) return { shot, kind: "misto", share, building: b, measured: shot.rh98, model: null, error: null };
       return { shot, kind: "edificio", share, building: b, measured, model: b.height, error: b.height - measured };
     }
@@ -149,7 +191,14 @@ export function assessLaser(shots: PlacedShot[], world: { heightAt: (x: number, 
     perBuilding[id] ??= { measured: median(list.map((item) => item.measured)), shots: list.length, share: Math.max(...list.map((item) => item.share)) };
   }
 
+  const scale = heightScale(
+    footing
+      .filter((row) => row.shot.good && row.tallest && row.built >= 0.1)
+      .map((row) => ({ rh98: row.shot.rh98, model: row.tallest!.height, source: row.tallest!.source })),
+  );
+
   return {
+    scale,
     datum,
     datumFrom,
     datumSpread,
