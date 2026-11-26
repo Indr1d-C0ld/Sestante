@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { castShadows, fitSunAltitude, maskScore, resampleMask, type SurfaceGrid } from "../src/vision/bench.ts";
 import { describeLean, leanFrom, leanFromSurface } from "../src/vision/lean.ts";
 import { surveyedParts } from "../src/core/lidarParts.ts";
+import { cutFace, skeletonDepth, straightSkeleton } from "../src/core/skeleton.ts";
 import { distanceToRings, insideRings, mainDirection, nearRectangle, presumePitched, roofSurfaceAt, smoothRoof, surveyedRoof } from "../src/core/roofs.ts";
 import { aboveLevels, storeyHeight } from "../src/core/storeys.ts";
 import { analyzePlate, asphaltShadowLevel, fillRing, greenCast, leafOn, shadowHeights, type Footprint } from "../src/vision/analyze.ts";
@@ -295,6 +296,41 @@ test("su una pianta ruotata i punti del tetto corrono lungo i lati, e la mediana
   let worst = 0;
   for (let j = 30; j < 70; j++) for (let i = 30; i < 70; i++) if (Math.abs(i - 52) > 1 || Math.abs(j - 48) > 1) worst = Math.max(worst, Math.abs(smooth.heights[j * cols + i]! - heights[j * cols + i]!));
   assert.ok(worst < 0.5, `falda spostata di ${worst}`);
+});
+
+test("lo scheletro dei lati dà una falda per lato su rettangolo, L, H e attorno a una corte", () => {
+  const faceArea = (sk: NonNullable<ReturnType<typeof straightSkeleton>>) =>
+    sk.faces.reduce((sum, f) => {
+      let a = 0;
+      const n = f.points.length / 3;
+      for (let i = 0, j = n - 1; i < n; j = i++) a += f.points[j * 3]! * f.points[i * 3 + 1]! - f.points[i * 3]! * f.points[j * 3 + 1]!;
+      return sum + Math.abs(a / 2);
+    }, 0);
+  const rect = straightSkeleton([[0, 0, 20, 0, 20, 10, 0, 10]])!;
+  assert.equal(rect.faces.length, 4);
+  assert.ok(Math.abs(rect.deepest - 5) < 0.01);
+  assert.ok(Math.abs(skeletonDepth(rect, 7, 5) - 5) < 0.01, "il colmo corre lungo il rettangolo");
+  assert.ok(Math.abs(skeletonDepth(rect, 2, 5) - 2) < 0.01, "la testata è una falda");
+  // Clockwise input works the same.
+  assert.equal(straightSkeleton([[0, 0, 0, 10, 20, 10, 20, 0]])!.faces.length, 4);
+  const L = straightSkeleton([[0, 0, 30, 0, 30, 10, 10, 10, 10, 30, 0, 30]])!;
+  assert.equal(L.faces.length, 6);
+  assert.ok(Math.abs(faceArea(L) - 500) < 1);
+  // Near the inner corner the roof is low: the valley starts there.
+  assert.ok(skeletonDepth(L, 9, 9) < 1.1);
+  const H = straightSkeleton([[0, 0, 10, 0, 10, 10, 20, 10, 20, 0, 30, 0, 30, 30, 20, 30, 20, 20, 10, 20, 10, 30, 0, 30]])!;
+  assert.equal(H.faces.length, 12);
+  assert.ok(Math.abs(faceArea(H) - 700) < 1);
+  const yard = straightSkeleton([[0, 0, 40, 0, 40, 40, 0, 40], [10, 10, 30, 10, 30, 30, 10, 30]])!;
+  assert.equal(yard.faces.length, 8);
+  assert.ok(Math.abs(skeletonDepth(yard, 5, 20) - 5) < 0.01);
+  assert.ok(Number.isNaN(skeletonDepth(yard, 20, 20)), "la corte resta vuota");
+  // A mansard: the face cut at 2.5 m, the slope below and the flat top above.
+  const face = rect.faces.find((f) => f.points.length / 3 === 4)!;
+  const { low, high } = cutFace(face.points, 2.5);
+  assert.ok(low && high);
+  assert.ok(Math.max(...low.filter((_, i) => i % 3 === 2)) <= 2.5 + 1e-9);
+  assert.ok(Math.min(...high.filter((_, i) => i % 3 === 2)) >= 2.5 - 1e-9);
 });
 
 test("sotto la chioma di un albero 3D il suolo è ricostruito dai dintorni", () => {

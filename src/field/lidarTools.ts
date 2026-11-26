@@ -4,6 +4,7 @@ import { castShadows, fitSunAltitude, maskScore, resampleMask, type SurfaceGrid 
 import { leanFromSurface, type Lean } from "../vision/lean.ts";
 import { distanceToRings, insideRings, nearRectangle, roofSurfaceAt, smoothRoof, STEEP_REACH, steepShape, type RoofGrid } from "../core/roofs.ts";
 import { familyId, SURVEY_PART, surveyedParts } from "../core/lidarParts.ts";
+import { skeletonDepth } from "../core/skeleton.ts";
 
 const median = (values: number[]) => {
   const s = [...values].sort((a, b) => a - b);
@@ -285,6 +286,7 @@ function splitByParts(b: Building, dsm: ArrayLike<number>, ground: ArrayLike<num
       area,
       minHeight: 0,
       splitBySurvey: false,
+      skeleton: undefined,
     } satisfies Building;
   });
 }
@@ -398,7 +400,8 @@ export async function benchmark(engine: Engine, offer: LidarOffer): Promise<Benc
     // Heights above the building's own ground, as the survey's are.
     const top = b.height;
     // As buildings.ts draws it: flat roofs, and steep ones over a complex plan, at the top.
-    const flatTop = b.roofShape === "flat" || (steepShape(b.roofShape) && !(b.rings.length === 1 && nearRectangle(b.rings[0]!, b.area)));
+    const skeleton = b.roofGrid ? undefined : b.skeleton;
+    const flatTop = b.roofShape === "flat" || (steepShape(b.roofShape) && !(b.rings.length === 1 && nearRectangle(b.rings[0]!, b.area)) && !skeleton);
     const eave = flatTop ? top : top - b.roofHeight;
     const rise = top - eave;
     let deepest = 0;
@@ -413,10 +416,17 @@ export async function benchmark(engine: Engine, offer: LidarOffer): Promise<Benc
     }
     if (at.length < 10) continue;
     if (steepShape(b.roofShape)) deepest = Math.min(deepest, STEEP_REACH);
+    // As drawn: on the straight skeleton where the building has one, else rising with the distance from the edge.
+    const reach = skeleton ? Math.min(skeleton.deepest, steepShape(b.roofShape) ? STEEP_REACH : Infinity) : 0;
+    const surface = (x: number, z: number) => {
+      if (!skeleton || !(reach > 0) || !(rise > 0)) return roofSurfaceAt(x, z, b.rings, eave, rise, deepest);
+      const d = skeletonDepth(skeleton, x, z);
+      return eave + (Number.isFinite(d) ? (rise * Math.min(reach, d)) / reach : 0);
+    };
     let model = 0;
     let flat = 0;
     for (const c of at) {
-      model += Math.abs(c.h - roofSurfaceAt(c.x, c.z, b.rings, eave, rise, deepest));
+      model += Math.abs(c.h - surface(c.x, c.z));
       flat += Math.abs(c.h - top);
     }
     roofModel.push(model / at.length);

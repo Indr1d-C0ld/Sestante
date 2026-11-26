@@ -5,7 +5,8 @@ import type { FieldSpec, PlateRef } from "../core/types.ts";
 import type { AnalysisInput, AnalysisResult, Footprint, TreeHeightOrigin } from "../vision/analyze.ts";
 import type { WorkerReply } from "../vision/worker.ts";
 import { aboveLevels, STOREY_MIN, storeyHeight } from "../core/storeys.ts";
-import { nearRectangle, presumedRise, presumePitched, type RoofGrid } from "../core/roofs.ts";
+import { nearRectangle, presumedRise, presumePitched, steepShape, type RoofGrid } from "../core/roofs.ts";
+import { straightSkeleton, type Skeleton } from "../core/skeleton.ts";
 
 type LatLon = [number, number];
 type OsmFeature = { id: string; tags: Record<string, string>; rings?: LatLon[][]; line?: LatLon[]; at?: LatLon };
@@ -43,6 +44,8 @@ export type Building = {
   roofFrom?: "mappa" | "colore" | "presunta" | "LiDAR" | "nessuna";
   /** Hidden because the laser survey split it into parts of different heights (they carry the id with ":rilievo"). */
   splitBySurvey?: boolean;
+  /** The straight skeleton under a pitched roof that is not a plain rectangle: one plane per side (core/skeleton.ts). */
+  skeleton?: Skeleton;
   /** The surveyed roof, heights above the ground, when the laser survey has been applied to this building. */
   roofGrid?: RoofGrid;
   roofHeight: number;
@@ -791,16 +794,22 @@ export async function loadField(spec: FieldSpec, onStep: (text: string) => void,
       roofHeight = height;
     }
     let roofFrom: Building["roofFrom"] = roofShape ? "mappa" : "nessuna";
+    const rectangle = item.rings.length === 1 && nearRectangle(item.rings[0]!, item.area);
+    // Pitched roofs over any other plan stand on the footprint's straight skeleton; when it cannot be built the roof
+    // falls back to what it was before (flat for a presumed one).
+    let skeleton: Skeleton | null | undefined;
+    const skeletonFits = () => {
+      if (skeleton === undefined) skeleton = straightSkeleton(rings);
+      return skeleton !== null;
+    };
     if (!roofShape && !item.isPart) {
       // Terracotta tones from the plate suggest a pitched roof where the map says nothing; so does being a mid-sized
       // building of some height, which the laser found pitched or uneven far more often than flat.
       const reddish = tone[0] > tone[1] * 1.14 && tone[0] > tone[2] * 1.3;
-      const rectangle = item.rings.length === 1 && nearRectangle(item.rings[0]!, item.area);
-      // Only on near-rectangles: over complex plans the ridge cannot follow the outline (see buildings.ts).
-      if (reddish && item.area < 900 && rectangle) {
+      if (reddish && item.area < 900 && (rectangle || skeletonFits())) {
         roofShape = "hipped";
         roofFrom = "colore";
-      } else if (presumePitched(height, item.area, false, item.isPart) && rectangle) {
+      } else if (presumePitched(height, item.area, false, item.isPart) && (rectangle || skeletonFits())) {
         roofShape = "hipped";
         roofFrom = "presunta";
       }
@@ -810,8 +819,14 @@ export async function loadField(spec: FieldSpec, onStep: (text: string) => void,
       roofHeight = roofShape === "dome" || roofShape === "onion" ? width * 0.42 : presumedRise(height, item.area);
     }
     if (item.levels === 0) item.levels = Math.max(1, Math.round((height - roofHeight) / 3.2));
+    const hipLike = roofShape === "hipped" || roofShape === "gabled" || roofShape === "half-hipped" || roofShape === "saltbox";
+    if (roofShape && ((hipLike && !rectangle) || steepShape(roofShape))) skeletonFits();
+    // The presumed rise comes from the footprint's area, which on an L or around a courtyard says little about how wide
+    // the wings are: on the skeleton the slope stays under about 39 degrees, unless the map gives the roof's height.
+    if (skeleton && hipLike && !rectangle && !item.roofHeight) roofHeight = Math.min(roofHeight, skeleton.deepest * 0.8);
     return {
       ...item,
+      skeleton: skeleton ?? undefined,
       rings,
       height,
       source,

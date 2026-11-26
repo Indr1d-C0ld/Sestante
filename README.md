@@ -4,7 +4,7 @@
 ![Node 24 o più recente](https://img.shields.io/badge/node-24-339933?logo=node.js&logoColor=white)
 ![three.js](https://img.shields.io/badge/three.js-r187-black?logo=three.js)
 ![WebGL2](https://img.shields.io/badge/WebGL-2-990000?logo=webgl&logoColor=white)
-![Test](https://img.shields.io/badge/test-124-success)
+![Test](https://img.shields.io/badge/test-125-success)
 
 Scegli un riquadro di Terra. Sestante ne legge la ripresa satellitare, la ricostruisce in 3D e ti ci fa camminare dentro in prima persona, con la borsa di strumenti di un ricercatore sul campo e un registro che si scrive da solo.
 
@@ -68,7 +68,7 @@ Poi apri http://localhost:4173. Senza chiavi funziona già tutto ciò che usa fo
 | --- | --- |
 | `npm start` | Server di produzione sulla porta 4173, con la build in `dist/` |
 | `npm run dev` | Sviluppo con Vite e ricarica a caldo (usa anche la porta successiva) |
-| `npm test` | I 124 test, su scene sintetiche di cui si conosce la verità |
+| `npm test` | I 125 test, su scene sintetiche di cui si conosce la verità |
 | `npm run typecheck` | Controllo dei tipi |
 
 Variabili d'ambiente: `PORT` per la porta, `SESTANTE_DATA` per la cartella dei dati (predefinita `data/` nel progetto). Il server ascolta solo su `127.0.0.1`.
@@ -454,8 +454,9 @@ Le altre chiavi di lettura sono nel codice: `tests/` contiene le scene sintetich
 Secondo il rilievo laser, sette edifici su dieci hanno un tetto con più di 1,5 m fra il colmo e la quota mediana: falde, mansarde, abbaini, parapetti. La mappa lo dice di rado, e nemmeno sempre bene: il 46% dei tetti segnati "piani" ha un dislivello. Prima, quasi ogni edificio era una scatola piatta all'altezza del colmo, quindi tutto il tetto stava alla quota del suo punto più alto. Ora:
 
 - **la forma scritta nella mappa vale sempre**; mansarde e simili salgono ripide per 2,5 m e sono quasi piane in cima;
-- **dove la mappa tace**, un edificio fra 8 m d'altezza e 1.000 m² di pianta, se la pianta è quasi rettangolare, riceve un tetto a padiglione presunto, alto un quarto della sua larghezza (fra 1,4 m e il 45% dell'altezza). È lo stesso tetto che già si dava alle tegole color terracotta, ora limitato anch'esso alle piante rettangolari;
-- **sulle piante complesse il tetto resta piatto.** Un tetto che sale da ogni bordo è stato provato: era il più vicino al rilievo, ma sugli isolati irregolari si increspava come un telo. Per la stessa ragione mansarde e simili, su piante complesse, si disegnano piane alla quota del colmo;
+- **dove la mappa tace**, un edificio fra 8 m d'altezza e 1.000 m² di pianta riceve un tetto a padiglione presunto, alto un quarto della sua larghezza (fra 1,4 m e il 45% dell'altezza). È lo stesso tetto che già si dava alle tegole color terracotta;
+- **sulle piante complesse il tetto sta sullo scheletro dei lati.** Ogni lato della pianta avanza verso l'interno alla stessa velocità; dove i lati si incontrano tracciano displuvi, compluvi e colmi, e ogni lato resta con la sua falda piana. Su una L, una T o attorno a una corte il tetto è fatto di piani, come quelli veri. Le mansarde salgono per 2,5 m dai lati e sono piane in cima. L'algoritmo è scritto nel progetto (`src/core/skeleton.ts`), segue il fronte evento per evento e controlla il risultato: le falde devono coprire l'area della pianta, altrimenti l'edificio tiene il tetto di prima, piatto se era presunto. Su circa 4.000 edifici di cinque città non è mai fallito, e costa da 50 a 110 ms per riquadro. Prima, un tetto che saliva con la distanza dal bordo più vicino era stato provato: era vicino al rilievo, ma si increspava come un telo, perché i suoi triangoli non seguivano displuvi e colmi;
+- **la pendenza resta sotto i 39 gradi sulle piante complesse**, se la mappa non dà l'altezza del tetto: la larghezza presunta dall'area, su una L o attorno a una corte, è molto più grande di quella delle ali, e le falde venivano a 60 gradi;
 - **la scheda dell'edificio dice da dove viene la forma:** mappa, colore della ripresa, dimensioni, oppure nessuna.
 
 **Dove c'è un rilievo laser**, il pulsante **Edifici e alberi dal laser**, nella scheda LiDAR, dà agli edifici anche il tetto rilevato. La gronda è alla quota mediana del tetto; sopra, il tetto segue il rilievo, ricostruito come una superficie di triangoli su punti ogni 1,5 m dentro il sedime e lungo i suoi bordi. Vale solo per i tetti coerenti, con il colmo entro 5 m dalla mediana e la mediana almeno al 60% del colmo: a Parigi 390 edifici su 494. Gli altri restano come erano, e ci sono due ragioni:
@@ -486,23 +487,23 @@ Il confronto qui sotto non è una validazione: le parti vengono dal rilievo stes
 
 Lo scarto che resta viene soprattutto dai bordi: il contorno di una parte segue le celle di un metro, e facciate e cornicioni cadono di qua o di là. Un albero in un cortile poteva diventare una parte; a Parigi, Londra, Anversa, Lione e Manchester una sola parte su 1.199 cade per più del 10% sulle chiome lette dalla ripresa. Il rilievo ha una data sua: un corpo costruito o demolito dopo non torna.
 
-Il banco di prova misura ora la distanza media fra la superficie dei tetti e il rilievo, cella per cella, e la confronta con tetti piatti alla stessa altezza:
+Il banco di prova misura la distanza media fra la superficie dei tetti e il rilievo, cella per cella, e la confronta con tetti piatti alla stessa altezza. La colonna "prima" è il modello con i tetti a falde solo sulle piante quasi rettangolari; "ora" li mette anche sulle altre, sullo scheletro dei lati. A Parigi quasi tutti i tetti vengono ormai dal laser e restano fuori dalla misura:
 
-| Luogo | Tetti piatti | Modello | Tetti presunti: piatti, modello |
-| --- | --- | --- | --- |
-| Amsterdam | 2,69 m | 1,84 m | 2,55, 1,57 (329 edifici) |
-| Parigi | 4,04 m | 3,97 m | 4,04, 3,28 (105) |
-| Londra | 4,37 m | 4,06 m | 4,24, 3,64 (296) |
-| Zurigo | 2,65 m | 2,77 m | 2,50, 2,58 (205) |
-| Rotterdam | 3,55 m | 3,13 m | 4,61, 3,88 (83) |
-| Anversa, centro | 5,06 m | 5,05 m | 4,99, 4,92 (318) |
-| Anversa, sud-est | 4,30 m | 4,32 m | 4,28, 4,26 (586) |
-| Lione, Presqu'île | 5,58 m | 6,03 m | 7,03, 6,93 (103) |
-| Lione, riva sinistra | 5,07 m | 5,36 m | 8,17, 6,97 (87) |
-| Manchester, centro | 4,72 m | 4,68 m | 4,52, 4,40 (111) |
-| Manchester, sud | 3,86 m | 3,72 m | 6,51, 5,59 (70) |
+| Luogo | Tetti piatti | Modello, prima | Modello, ora | Presunti, prima | Presunti ora: piatti, modello |
+| --- | --- | --- | --- | --- | --- |
+| Amsterdam | 2,69 m | 1,84 m | 1,66 m | 1,57 (329 edifici) | 2,66, 1,64 (425) |
+| Parigi | 3,11 m | 2,77 m | 2,84 m | 1,54 (1) | 3,11, 2,84 (2) |
+| Londra | 4,37 m | 4,06 m | 3,88 m | 3,64 (296) | 4,35, 3,83 (530) |
+| Zurigo | 2,65 m | 2,77 m | 2,78 m | 2,58 (205) | 2,52, 2,74 (322) |
+| Rotterdam | 3,55 m | 3,13 m | 3,05 m | 3,88 (83) | 4,78, 4,27 (118) |
+| Anversa, centro | 5,06 m | 5,05 m | 4,99 m | 4,92 (318) | 4,94, 4,69 (535) |
+| Anversa, sud-est | 4,30 m | 4,32 m | 4,30 m | 4,26 (586) | 4,37, 4,33 (895) |
+| Lione, Presqu'île | 5,58 m | 6,03 m | 6,57 m | 6,93 (103) | 6,28, 6,82 (231) |
+| Lione, riva sinistra | 5,07 m | 5,36 m | 5,17 m | 6,97 (87) | 7,89, 6,92 (162) |
+| Manchester, centro | 4,72 m | 4,68 m | 4,59 m | 4,40 (111) | 4,52, 4,10 (154) |
+| Manchester, sud | 3,86 m | 3,72 m | 3,52 m | 5,59 (70) | 6,16, 5,14 (88) |
 
-Il tetto presunto avvicina la superficie al rilievo in dieci riquadri su undici. Nell'insieme il modello fa meglio dei tetti piatti in sette. Peggiora a Zurigo e a Lione, e quasi tutto per la regola del colore e per le forme scritte nella mappa. Il motivo è che lì le altezze sono già sottostimate (a Lione di 5,8 m, vedi le altezze dai piani): un tetto a falde abbassa la superficie media e allarga l'errore. Va corretta l'altezza, non la forma.
+Con lo scheletro il modello si avvicina al rilievo in otto riquadri su undici, ed è pari a Zurigo. Il tetto presunto batte quello piatto in nove su undici. Peggiora a Lione, Presqu'île, e resta peggiore del piatto a Zurigo: lì le altezze sono già sottostimate (a Lione di 5,8 m, vedi le altezze dai piani), e un tetto a falde abbassa la superficie media e allarga l'errore. Va corretta l'altezza, non la forma. Lo stesso vale per le mansarde scritte nella mappa di Lione, che prima si disegnavano piane e ora hanno la loro forma: da 4,75 a 4,96 m, contro 4,36 di un tetto piatto.
 
 ### Inclinazione della ripresa
 
