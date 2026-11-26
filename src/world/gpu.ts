@@ -107,6 +107,7 @@ export class GpuView {
   private cloudBase = 0;
   private cloudTop = uniform(2800);
   private envCloud = -1;
+  private wallMats: Any[] = [];
   private greyLight = uniform(new THREE.Color(0.7, 0.72, 0.76));
   private hazeNode: Any = null;
   sunColor = new THREE.Color(1, 0.96, 0.9);
@@ -288,6 +289,7 @@ export class GpuView {
     if (PORTED[key]) {
       out = PORTED[key]!(this, material);
       this.note(this.report.ported, key);
+      if (out.userData.wall) this.wallMats.push(out);
     } else if ((material as THREE.ShaderMaterial).isShaderMaterial) {
       // Raw GLSL cannot run here: hidden until ported, and listed.
       object.visible = false;
@@ -465,6 +467,22 @@ export class GpuView {
     return this.clouds;
   }
 
+  /**
+   * Walls take half as much again of the sky's light as the rest: vertical, they see the bright horizon and the ground's
+   * bounce, which the environment gives them too little of. In a London street the median facade went from 106 to 122
+   * (WebGL2 118); over four views the average gap stayed within a few levels.
+   */
+  private wallLight() {
+    const env = this.envTarget?.texture ?? null;
+    for (const m of this.wallMats) {
+      if (m.envMap !== env) {
+        m.envMap = env;
+        m.needsUpdate = true;
+      }
+      m.envMapIntensity = this.scene.environmentIntensity * 1.5;
+    }
+  }
+
   /** The sky's light on things that are not lit by the sun: rain streaks, snowflakes. */
   get skyLight() {
     return this.greyLight.value as THREE.Color;
@@ -507,6 +525,7 @@ export class GpuView {
     // brightness of the city on four boxes (Paris and Zurich from the drone, Lyon and London from the street): at 0.35 the
     // median sat 15 to 60 levels darker and facades in shade stood near black; now within about 15 either way.
     this.scene.environmentIntensity = 0.6 * (1 - 0.55 * (U.uCloud.value as number));
+    this.wallLight();
     this.visibility.value = look.visibility;
     this.aerial.value = look.aerial;
     this.grey.value = look.visibility < 12000 ? 1 : THREE.MathUtils.smoothstep(25000 - look.visibility, 8000, 24000);
@@ -538,7 +557,12 @@ export class GpuView {
       if (this.hazeNode) this.hazeNode.value = this.envTarget.texture;
       else this.compose(this.envTarget.texture);
     }
-    this.hemi.intensity = 0.2;
+    // The sky's light fades with the sun: at night it was the same as at noon, and the night's exposure lit the town up.
+    const day = THREE.MathUtils.smoothstep(skySun.y, -0.12, 0.08);
+    const moonUp = light === skySun ? 0 : Math.max(0, light.y);
+    // At night: a floor of starlight and town glow, more as the moon rises. Matched to the WebGL2 engine's night on Zurich
+    // at 8 pm and at midnight (median brightness 36 and 69 against 37 and 72).
+    this.hemi.intensity = 0.2 * (day + (1 - day) * (0.3 + 0.6 * moonUp));
     if (this.pipeline) this.pipeline.render();
     else renderer.render(this.scene, this.camera);
   }

@@ -381,7 +381,12 @@ export const PORTED: Record<string, Port> = {
   ground: (view) => view.groundMaterial(),
   roofs: (view, source) => view.roofMaterial(source),
   far: (view, source) => view.standIn(source),
-  walls: (view, source) => weatherize(view, walls(view, source)),
+  // Marked so that GpuView gives walls their own share of the sky's light (wallLight in gpu.ts).
+  walls: (view, source) => {
+    const m = weatherize(view, walls(view, source));
+    m.userData.wall = true;
+    return m;
+  },
   leaves,
   crowns,
   trunks,
